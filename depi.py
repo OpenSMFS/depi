@@ -136,11 +136,25 @@ def recolor_burstsph_OU_gauss_R(timestamps, R0, R_mean, R_sigma,
                                 rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     else:
         # Check that all parameters have length 2
-        p = dict(R_mean=R_mean, R_sigma=R_sigma, τ_relax=τ_relax,
-                 k_s=k_s)
+        num_states = len(R_mean)
+        p = dict(R_mean=R_mean, R_sigma=R_sigma, τ_relax=τ_relax)
         for name, val in p.items():
-            assert np.size(val) == 2, f'Argument "{name}" (={val}) should be of length 2.'
-        func = depi_cy.sim_DA_from_timestamps2_p2_2states_cy
+            m = f'Argument "{name}" (={val}) should be of length {num_states}.'
+            assert np.size(val) == num_states, m
+        k_s = np.asarray(k_s)
+        if num_states == 1:
+            m = f'"k_s" (={k_s}) should be a 1d array or length 1 (# states = 1).'
+            assert np.size(k_s) == 1, m
+        elif k_s.ndim == 1:
+            m = f'"k_s" (={k_s}) should an {num_states}x{num_states} array.'
+            assert num_states == 2, m
+            m = f'"k_s" (={k_s}) should be a 2-element 1d array or an 2x2 array.'
+            assert np.size(k_s) == 2, m
+            func = depi_cy.sim_DA_from_timestamps2_p2_2states_cy
+        else:
+            m = f'"k_s" (={k_s}) should be an {num_states}x{num_states} array.'
+            assert k_s.ndim == 2 and k_s.shape[0] == k_s.shape[1], m
+            func = depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy
         params = (np.asarray(R_mean), np.asarray(R_sigma),
                   np.asarray(τ_relax), np.asarray(k_s))
         A_em, R_ph, T_ph, S_ph = func(
