@@ -524,74 +524,6 @@ def sim_DA_from_timestamps2_p(timestamps, dt_max, k_D, R0, R_mean, R_sigma,
     return A_ph, R_ph, T_ph
 
 
-def sim_DA_from_timestamps_2states(timestamps, δt, k_D, R0,
-                                   R_mean, R_sigma, τ_relax, k_s, rg):
-    """
-    Recoloring for two states + diffusion, using fixed δt
-    and no random number caching
-    """
-    A_ph = np.zeros(timestamps.size, dtype=bool)
-    R_ph = np.zeros(timestamps.size, dtype=np.float64)
-    T_ph = np.zeros(timestamps.size, dtype=np.float64)
-    S_ph = np.zeros(timestamps.size, dtype=bool)
-    t0 = 0
-    peq = [k_s[1] / (k_s[0] + k_s[1]),
-           k_s[0] / (k_s[0] + k_s[1])]
-    k_s_sum = np.sum(k_s)
-    nanotime = 0
-    state = 0  # the two states are 0 and 1
-    R = rg.randn() * R_sigma[state] + R_mean[state]
-    for iph, t in enumerate(timestamps):
-        # each cycle starts with a new photon timestamp `t`
-        # excitation time is `t`, emission time is `t + nanotime`
-        delta_t0 = t - t0
-        delta_t = delta_t0 - nanotime
-        if delta_t < 0:
-            # avoid negative delta_t possible when when two photons have
-            # the same macrotime
-            delta_t = 0
-            t = t0
-        p_state = (1 - peq[state]) * np.exp(-(delta_t0 * k_s_sum)) + peq[state]
-        u = rg.rand()
-        if p_state <= u:
-            state = 0 if state == 1 else 1
-            R = rg.randn() * R_sigma[state] + R_mean[state]
-        # `R` here is the D-A distance at the excitation time
-        N = rg.randn()
-        R = ou_single_step_cy(R, delta_t, N, R_mean[state], R_sigma[state],
-                              τ_relax[state])
-        nanotime = 0
-        # loop through D-A diffusion steps with a fixed time-step δt
-        # until D de-excitation by photon emission or energy transfer to A
-        while True:
-            k_ET = k_D * (R0 / R)**6
-            k_emission = k_ET + k_D
-            # random trial to emit in the current time bin δt
-            d_prob_ph_em = k_emission * δt  # prob. of emission in δt
-            p = rg.rand()
-            if d_prob_ph_em >= p:
-                break   # break out of the loop when the photon is emitted
-            nanotime += δt
-            N = rg.randn()
-            R = ou_single_step_cy(R, δt, N, R_mean[state], R_sigma[state],
-                                  τ_relax[state])
-
-        # photon emitted, let's decide if it is from D or A
-        p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
-        prob_A_em = k_ET / k_emission
-        if prob_A_em >= p_DA:
-            A_ph[iph] = True
-        # time of D de-excitation by photon emission or energy transfer to A
-        t0 = t
-        # save D-A distance at emission time
-        R_ph[iph] = R
-        # save time of emission relative to the excitation time `t`
-        T_ph[iph] = nanotime
-        # Save state for current photon
-        S_ph[iph] = state
-    return A_ph, R_ph, T_ph
-
-
 def sim_DA_from_timestamps2_p2_2states(timestamps, dt_ref, k_D, R0, R_mean,
                                        R_sigma, tau_relax, k_s, rg,
                                        chunk_size=1000, alpha=0.05, ndt=10):
@@ -605,7 +537,7 @@ def sim_DA_from_timestamps2_p2_2states(timestamps, dt_ref, k_D, R0, R_mean,
             print(f'WARNING: Reducing dt[{state}] to {dt[state]:g} '
                   f'[tau_relax[{state}] = {tau_relax[state]}]')
     # Array flagging photons as A (1) or D (0) emitted
-    A_ph = np.zeros(timestamps.size, dtype=bool)
+    A_ph = np.zeros(timestamps.size, dtype=np.uint8)
     # Instantaneous D-A distance at D de-excitation time
     R_ph = np.zeros(timestamps.size, dtype=np.float64)
     # Time of D de-excitation relative to the last timestamp
@@ -669,9 +601,9 @@ def sim_DA_from_timestamps2_p2_2states(timestamps, dt_ref, k_D, R0, R_mean,
 
         # photon emitted, let's decide if it is from D or A
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
-        prob_A_em = k_ET / (k_ET + k_D)
+        prob_A_em = k_ET / k_emission
         if prob_A_em >= p_DA:
-            A_ph[iph] = True
+            A_ph[iph] = 1
         # time of D de-excitation by photon emission or energy transfer to A
         t0 = t
         # save D-A distance at emission time

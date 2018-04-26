@@ -251,6 +251,7 @@ def sim_DA_from_timestamps2_p2_2states_cy(np.int64_t[:] timestamps,
     k_s_sum = np.sum(k_s)
     peq = [k_s[1] / (k_s[0] + k_s[1]),
            k_s[0] / (k_s[0] + k_s[1])]
+    state = 0  # the two states are 0 and 1
     R_ou = rg.randn() * R_sigma[state]
     iN = chunk_size - 1  # value to get the first chunk of random numbers
     t0 = 0
@@ -262,12 +263,13 @@ def sim_DA_from_timestamps2_p2_2states_cy(np.int64_t[:] timestamps,
         delta_t0 = t - t0
         delta_t = delta_t0 - nanotime
         if delta_t < 0:
+            # avoid negative delta_t possible when when two photons have
+            # the same macrotime
             delta_t = 0
             t = t0
         p_state = (1 - peq[state]) * np.exp(-(delta_t0 * k_s_sum)) + peq[state]
         u = rg.rand()
         if p_state <= u:
-            old_state = state
             state = 0 if state == 1 else 1
             R_ou = rg.randn() * R_sigma[state]
             # R_mean_i = R_mean[state]
@@ -293,7 +295,6 @@ def sim_DA_from_timestamps2_p2_2states_cy(np.int64_t[:] timestamps,
             d_prob_ph_em = k_emission * dt[state]
             if d_prob_ph_em > alpha:
                 d_prob_ph_em = 1 - exp(-d_prob_ph_em)
-                #ni += 1
             if d_prob_ph_em >= p:
                 break   # break out of the loop when the photon is emitted
             nanotime += dt[state]
@@ -311,7 +312,7 @@ def sim_DA_from_timestamps2_p2_2states_cy(np.int64_t[:] timestamps,
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
         prob_A_em = k_ET / k_emission
         if prob_A_em >= p_DA:
-            A_ph[iph] = True
+            A_ph[iph] = 1
         # time of D de-excitation by photon emission or energy transfer to A
         t0 = t
         # save D-A distance at emission time

@@ -1,4 +1,4 @@
-#import pytest
+import pytest
 import json
 from pathlib import Path
 import numpy as np
@@ -110,6 +110,7 @@ def test_approx_vs_correct():
                         np.allclose(T_ph, T_php2)])
 
 
+@pytest.mark.skip(reason="This test takes too long. Run it responsibly.")
 def test_dt_tollerance():
     """
     Using small enough dt approximated and correct expression should be similar
@@ -124,7 +125,7 @@ def test_dt_tollerance():
     τ_relax = 0.5 * ns
     τ_D = 4 * ns
     k_D = 1 / τ_D
-    ts = burstsph.timestamp.values[:2000]
+    ts = burstsph.timestamp.values[:10000]
 
     rg = RandomGenerator(Xoroshiro128(1))
     A_em, R_ph, T_ph = depi.sim_DA_from_timestamps(
@@ -185,3 +186,32 @@ def test_cdf_vs_dt_cy():
     assert not all([not np.allclose(A_em, A_emp),
                     not np.allclose(R_ph, R_php),
                     not np.allclose(T_ph, T_php)])
+
+
+def test_2states_py_vs_cy():
+    burstsph = load_burstsph()
+    ns = 1.0
+    nm = 1.0
+    R0 = 6 * nm
+    R_mean = np.array([5.5 * nm, 8 * nm])
+    R_sigma = np.array([0.8 * nm, 1 * nm])
+    τ_relax = np.array([0.1 * ns, 0.1 * ns])
+    k_s = np.array([1 / (1e6 * ns), 1 / (1e6 * ns)])  # transition rates: [0->1, 1->0]
+    δt = 1e-2 * ns
+    τ_D = 3.8 * ns
+
+    k_D = 1 / τ_D
+    ts = burstsph.timestamp.values[:10000]
+
+    rg = RandomGenerator(Xoroshiro128(1))
+    A_em, R_ph, T_ph, S_ph = depi.sim_DA_from_timestamps2_p2_2states(
+        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, k_s, rg=rg)
+
+    rg = RandomGenerator(Xoroshiro128(1))
+    A_emp, R_php, T_php, S_php = depi_cy.sim_DA_from_timestamps2_p2_2states_cy(
+        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, k_s, rg=rg, ndt=0)
+
+    assert np.allclose(R_php, R_ph)
+    assert np.allclose(T_php, T_ph)
+    assert np.allclose(S_php, S_ph)
+    assert np.allclose(A_emp, A_em)
