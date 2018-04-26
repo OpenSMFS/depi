@@ -215,3 +215,61 @@ def test_2states_py_vs_cy():
     assert np.allclose(T_php, T_ph)
     assert np.allclose(S_php, S_ph)
     assert np.allclose(A_emp, A_em)
+
+
+def test_Nstates_py_vs_cy():
+    burstsph = load_burstsph()
+    ns = 1.0
+    nm = 1.0
+    R0 = 6 * nm
+    R_mean = np.array([5.5 * nm, 8 * nm])
+    R_sigma = np.array([0.8 * nm, 1 * nm])
+    τ_relax = np.array([0.1 * ns, 0.1 * ns])
+    k_s01, k_s10 = np.array([1 / (1e6 * ns), 1 / (1e6 * ns)])
+    K_s = np.array([[-k_s01, k_s01],
+                    [k_s10, -k_s10]])
+    δt = 1e-2 * ns
+    τ_D = 3.8 * ns
+
+    k_D = 1 / τ_D
+    ts = burstsph.timestamp.values[:5000]
+    rg = RandomGenerator(Xoroshiro128(1))
+    A_em, R_ph, T_ph, S_ph = depi.sim_DA_from_timestamps2_p2_Nstates(
+        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, K_s, rg=rg)
+    rg = RandomGenerator(Xoroshiro128(1))
+    A_emp, R_php, T_php, S_php = depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy(
+        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, K_s, rg=rg, ndt=0)
+    assert np.allclose(R_php, R_ph)
+    assert np.allclose(T_php, T_ph)
+    assert np.allclose(S_php, S_ph)
+    assert np.allclose(A_emp, A_em)
+
+
+def test_2states_vs_Nstates():
+    burstsph = load_burstsph()
+    ns = 1.0
+    nm = 1.0
+    R0 = 6 * nm
+    R_mean = np.array([5.5 * nm, 8 * nm])
+    R_sigma = np.array([0.8 * nm, 1 * nm])
+    τ_relax = np.array([0.1 * ns, 0.1 * ns])
+    k_s01, k_s10 = np.array([1 / (1e5 * ns), 1 / (1e6 * ns)])
+    K_s = np.array([[-k_s01, k_s01],
+                    [k_s10, -k_s10]])
+    k_s = np.array([k_s01, k_s10])
+    δt = 1e-2 * ns
+    τ_D = 3.8 * ns
+
+    k_D = 1 / τ_D
+    ts = burstsph.timestamp.values[:10000]
+
+    rg = RandomGenerator(Xoroshiro128(1))
+    A_em, R_ph, T_ph, S_ph = depi_cy.sim_DA_from_timestamps2_p2_2states_cy(
+        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, k_s, rg=rg)
+    rg = RandomGenerator(Xoroshiro128(1))
+    A_emp, R_php, T_php, S_php = depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy(
+        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, K_s, rg=rg, ndt=0)
+    assert np.allclose(R_php, R_ph)
+    assert np.allclose(T_php, T_ph)
+    assert np.allclose(S_php, S_ph)
+    assert np.allclose(A_emp, A_em)
