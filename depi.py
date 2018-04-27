@@ -641,9 +641,9 @@ def sim_DA_from_timestamps2_p2_Nstates(timestamps, dt_ref, k_D, R0, R_mean,
     """
     2-states recoloring using CDF in dt and with random number caching
     """
-    dt = np.array([dt_ref] * 2, dtype=np.float64)
     assert K_s.shape[0] == K_s.shape[1], 'K_s needs to be a square matrix.'
     num_states = K_s.shape[0]
+    dt = np.array([dt_ref] * num_states, dtype=np.float64)
     for state in range(num_states):
         if tau_relax[state] < ndt * dt[state]:
             dt[state] = tau_relax[state] / ndt

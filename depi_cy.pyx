@@ -335,7 +335,7 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(np.int64_t[:] timestamps,
         double dt_ref, double k_D, double R0, double[:] R_mean,
         double[:] R_sigma, double[:] tau_relax, double[:,:] K_s, *, rg,
         int chunk_size=1000, double alpha=0.05, double ndt=10):
-    cdef double[:] dt = np.array([dt_ref]*2, dtype=np.float64)
+    cdef double[:] dt
     cdef double R_ou
     cdef double R, R_prev, delta_t, delta_t0, nanotime, k_ET, d_prob_ph_em, k_emission
     #cdef double R_mean_i, R_sigma_i, tau_relax_i, dt_i
@@ -358,6 +358,7 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(np.int64_t[:] timestamps,
     #cdef np.float64_t[:,:] V, V_inv
     assert K_s.shape[0] == K_s.shape[1], 'K_s needs to be a square matrix.'
     cdef num_states = K_s.shape[0]
+    dt = np.array([dt_ref]*num_states, dtype=np.float64)
     for state in range(num_states):
         if tau_relax[state] < ndt * dt[state]:
             dt[state] = tau_relax[state] / ndt
