@@ -502,7 +502,6 @@ def sim_DA_from_timestamps2_p(timestamps, dt_max, k_D, R0, R_mean, R_sigma,
         N = Na[iN]
         p = Pa[iN]
         R = ou_single_step_cy(R, delta_t, N, R_mean, R_sigma, tau_relax)
-        #print(f'R: {R}, iph:{iph}, N:{N}, p:{p}')
         nanotime = 0
         # loop through D-A diffusion steps with a fixed time-step dt
         # until D de-excitation by photon emission or energy transfer to A
@@ -523,11 +522,87 @@ def sim_DA_from_timestamps2_p(timestamps, dt_max, k_D, R0, R_mean, R_sigma,
             p = Pa[iN]
             # Update R following the OU process
             R = ou_single_step_cy(R, dt, N, R_mean, R_sigma, tau_relax)
-            #print(f' - R: {R}, iph:{iph}, N:{N}, p:{p}, dt:{dt}')
-
         # photon emitted, let's decide if it is from D or A
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
         prob_A_em = k_ET / (k_ET + k_D)
+        if prob_A_em >= p_DA:
+            A_ph[iph] = True
+        # time of D de-excitation by photon emission or energy transfer to A
+        t0 = t + nanotime
+        # save D-A distance at emission time
+        R_ph[iph] = R
+        # save time of emission relative to the excitation time `t`
+        T_ph[iph] = nanotime
+    return A_ph, R_ph, T_ph
+
+
+def sim_DA_from_timestamps2_p2(timestamps, dt, k_D, R0, R_mean, R_sigma,
+                               tau_relax, rg, chunk_size=1000,
+                               alpha=0.05, ndt=10):
+    """
+    Recoloring using fixed dt, emission uses exponential CDF.
+    For efficiency, random numbers are computed in blocks.
+
+    The assumption here is that since tau_relax >> dt, distance and FRET
+    will not change during dt, so the transition probability can be computed
+    from the exponential CDF.
+    """
+    if tau_relax < ndt * dt:
+        dt = tau_relax / ndt
+        print(f'WARNING: Reducing dt to {dt:g} '
+              f'[tau_relax = {tau_relax}]')
+    R = rg.randn() * R_sigma + R_mean
+    t0 = 0
+    nanotime = 0
+    # Array flagging photons as A (1) or D (0) emitted
+    A_ph = np.zeros(timestamps.size, dtype=bool)
+    # Instantaneous D-A distance at D de-excitation time
+    R_ph = np.zeros(timestamps.size, dtype=np.float64)
+    # Time of D de-excitation relative to the last timestamp
+    T_ph = np.zeros(timestamps.size, dtype=np.float64)
+    iN = chunk_size - 1  # value to get the first chunk of random numbers
+    for iph, t in enumerate(timestamps):
+        # each cycle starts with a new photon timestamp `t`
+        # excitation time is `t`, emission time is `t + nanotime`
+        delta_t = t - t0
+        if delta_t < 0:
+            # avoid negative delta_t possible when when two photons have
+            # the same macrotime
+            delta_t = 0
+            t = t0
+        # Compute the D-A distance at the "excitation time"
+        iN += 1
+        if iN == chunk_size:
+            Na = memoryview(rg.randn(chunk_size))
+            Pa = memoryview(rg.rand(chunk_size))
+            iN = 0
+        N = Na[iN]
+        p = Pa[iN]
+        R = ou_single_step_cy(R, delta_t, N, R_mean, R_sigma, tau_relax)
+        nanotime = 0
+        # loop through D-A diffusion steps with a fixed time-step dt
+        # until D de-excitation by photon emission or energy transfer to A
+        while True:
+            k_ET = k_D * (R0 / R)**6
+            k_emission = k_ET + k_D
+            d_prob_ph_em = dt * k_emission
+            if d_prob_ph_em > alpha:
+                d_prob_ph_em = 1 - exp(-d_prob_ph_em)
+            if d_prob_ph_em >= p:
+                break   # break out of the loop when the photon is emitted
+            nanotime += dt
+            iN += 1
+            if iN == chunk_size:
+                Na = memoryview(rg.randn(chunk_size))
+                Pa = memoryview(rg.rand(chunk_size))
+                iN = 0
+            N = Na[iN]
+            p = Pa[iN]
+            # Update R following the OU process
+            R = ou_single_step_cy(R, dt, N, R_mean, R_sigma, tau_relax)
+        # photon emitted, let's decide if it is from D or A
+        p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
+        prob_A_em = k_ET / k_emission
         if prob_A_em >= p_DA:
             A_ph[iph] = True
         # time of D de-excitation by photon emission or energy transfer to A
@@ -618,7 +693,6 @@ def sim_DA_from_timestamps2_p2_2states(timestamps, dt_ref, k_D, R0, R_mean,
             p = Pa[iN]
             R = ou_single_step_cy(R, dt[state], N, R_mean[state], R_sigma[state],
                                   tau_relax[state])
-
         # photon emitted, let's decide if it is from D or A
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
         prob_A_em = k_ET / k_emission
@@ -721,7 +795,6 @@ def sim_DA_from_timestamps2_p2_Nstates(timestamps, dt_ref, k_D, R0, R_mean,
             p = Pa[iN]
             R = ou_single_step_cy(R, dt[state], N, R_mean[state], R_sigma[state],
                                   tau_relax[state])
-
         # photon emitted, let's decide if it is from D or A
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
         prob_A_em = k_ET / k_emission

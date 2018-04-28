@@ -181,14 +181,11 @@ def sim_DA_from_timestamps2_p2_cy(np.int64_t[:] timestamps, double dt,
         # loop through D-A diffusion steps with a fixed time-step dt
         # until D de-excitation (by photon emission or energy transfer to A)
         while True:
-            # if R <= 0:
-            #     raise ValueError(f'timestamps2_p2_cy: iph = {iph}; nanotime = {nanotime}; R = {R}; R_prev = {R_prev}; delta_t = {delta_t}; dt = {dt}; N = {N}; R_sigma = {R_sigma}; tau_relax = {tau_relax}')
             k_ET = k_D * (R0 / R)**6
             k_emission = k_ET + k_D
             d_prob_ph_em = dt * k_emission
             if d_prob_ph_em > alpha:
                 d_prob_ph_em = 1 - exp(-d_prob_ph_em)
-                #ni += 1
             if d_prob_ph_em >= p:
                 break   # break out of the loop when the photon is emitted
             nanotime += dt

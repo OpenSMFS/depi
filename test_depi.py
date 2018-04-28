@@ -126,7 +126,6 @@ def test_dt_tollerance():
     τ_D = 4 * ns
     k_D = 1 / τ_D
     ts = burstsph.timestamp.values[:10000]
-
     rg = RandomGenerator(Xoroshiro128(1))
     A_em, R_ph, T_ph = depi.sim_DA_from_timestamps(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg)
@@ -160,6 +159,32 @@ def test_dt_tollerance():
     assert abs(E_ratio_c2 - E_ratio_a) < 0.03
     assert abs(E_lifetime_c - E_ratio_a) < 0.03
     assert abs(E_lifetime_c2 - E_ratio_a) < 0.03
+
+
+def test_cdf_vs_dt_python():
+    """
+    Test CDF vs small-dt correction in python code
+    """
+    burstsph = load_burstsph()
+    ns = 1.0
+    nm = 1.0
+    δt = 1e-2 * ns
+    R0 = 6 * nm
+    R_mean = 6.5 * nm
+    R_sigma = 1 * nm
+    τ_relax = 0.2 * ns
+    τ_D = 4 * ns
+    k_D = 1 / τ_D
+    ts = burstsph.timestamp.values[:2000]
+    rg = RandomGenerator(Xoroshiro128(1))
+    A_em, R_ph, T_ph = depi.sim_DA_from_timestamps2_p(
+        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg, ndt=0, alpha=np.inf)
+    rg = RandomGenerator(Xoroshiro128(1))
+    A_emp, R_php, T_php = depi.sim_DA_from_timestamps2_p2(
+        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg, ndt=0, alpha=np.inf)
+    assert not all([not np.allclose(A_em, A_emp),
+                    not np.allclose(R_ph, R_php),
+                    not np.allclose(T_ph, T_php)])
 
 
 def test_cdf_vs_dt_cy():
