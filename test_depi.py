@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from randomgen import RandomGenerator, Xoroshiro128
 import depi
+import depi_ref
 import depi_cy
 
 
@@ -34,7 +35,7 @@ def test_py_vs_cy():
     ts = burstsph.timestamp.values[:1000]
 
     rg = RandomGenerator(Xoroshiro128(1))
-    A_em, R_ph, T_ph = depi.sim_DA_from_timestamps(
+    A_em, R_ph, T_ph = depi_ref.sim_DA_from_timestamps(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg)
     rg = RandomGenerator(Xoroshiro128(1))
     A_emc, R_phc, T_phc = depi_cy.sim_DA_from_timestamps_cy(
@@ -53,7 +54,7 @@ def test_py_vs_cy():
     assert abs(E_PoR - E_lifetime) < 0.03
 
     rg = RandomGenerator(Xoroshiro128(1))
-    A_em, R_ph, T_ph = depi.sim_DA_from_timestamps2_p(
+    A_em, R_ph, T_ph = depi_ref.sim_DA_from_timestamps2_p(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg)
     rg = RandomGenerator(Xoroshiro128(1))
     A_emc, R_phc, T_phc = depi_cy.sim_DA_from_timestamps2_p_cy(
@@ -94,13 +95,13 @@ def test_approx_vs_correct():
             R_sigma *= nm
             R_mean *= nm
             rg = RandomGenerator(Xoroshiro128(1))
-            A_em, R_ph, T_ph = depi.sim_DA_from_timestamps(
+            A_em, R_ph, T_ph = depi_ref.sim_DA_from_timestamps(
                 ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg)
             rg = RandomGenerator(Xoroshiro128(1))
-            A_emp, R_php, T_php = depi.sim_DA_from_timestamps_p(
+            A_emp, R_php, T_php = depi_ref.sim_DA_from_timestamps_p(
                 ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg, α=np.inf, ndt=0)
             rg = RandomGenerator(Xoroshiro128(1))
-            A_emp2, R_php2, T_php2 = depi.sim_DA_from_timestamps_p2(
+            A_emp2, R_php2, T_php2 = depi_ref.sim_DA_from_timestamps_p2(
                 ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg, α=np.inf, ndt=0)
             assert all([np.allclose(A_em, A_emp),
                         np.allclose(R_ph, R_php),
@@ -127,13 +128,13 @@ def test_dt_tollerance():
     k_D = 1 / τ_D
     ts = burstsph.timestamp.values[:10000]
     rg = RandomGenerator(Xoroshiro128(1))
-    A_em, R_ph, T_ph = depi.sim_DA_from_timestamps(
+    A_em, R_ph, T_ph = depi_ref.sim_DA_from_timestamps(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg)
     rg = RandomGenerator(Xoroshiro128(1))
-    A_emp, R_php, T_php = depi.sim_DA_from_timestamps_p(
+    A_emp, R_php, T_php = depi_ref.sim_DA_from_timestamps_p(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg)
     rg = RandomGenerator(Xoroshiro128(1))
-    A_emp2, R_php2, T_php2 = depi.sim_DA_from_timestamps_p2(
+    A_emp2, R_php2, T_php2 = depi_ref.sim_DA_from_timestamps_p2(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg)
     assert not all([not np.allclose(A_em, A_emp),
                     not np.allclose(R_ph, R_php),
@@ -177,7 +178,7 @@ def test_cdf_vs_dt_python():
     k_D = 1 / τ_D
     ts = burstsph.timestamp.values[:2000]
     rg = RandomGenerator(Xoroshiro128(1))
-    A_em, R_ph, T_ph = depi.sim_DA_from_timestamps2_p(
+    A_em, R_ph, T_ph = depi_ref.sim_DA_from_timestamps2_p(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg, ndt=0, alpha=np.inf)
     rg = RandomGenerator(Xoroshiro128(1))
     A_emp, R_php, T_php = depi.sim_DA_from_timestamps2_p2(
