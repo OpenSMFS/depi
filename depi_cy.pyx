@@ -11,17 +11,11 @@ cimport numpy as np
 from libc.math cimport exp, sqrt
 import ctmc
 
-# Uncomment this block to enable profiling with line_profiler
-# from Cython.Compiler.Options import get_directive_defaults
-# directive_defaults = get_directive_defaults()
-# directive_defaults['linetrace'] = False
-# directive_defaults['binding'] = False
-
 
 @cython.cdivision(True)
 cpdef inline double ou_single_step_cy(double x0, double delta_t, double N,
                                       double ou_mean, double ou_sigma,
-                                      double ou_tau) nogil:
+                                      double ou_tau):
     """Compute the next value of an OU process starting from `x0`
     """
     cdef double dt_over_tau = delta_t / ou_tau
@@ -52,7 +46,8 @@ def sim_DA_from_timestamps2_p2_cy(np.int64_t[:] timestamps, double dt,
                                   double alpha=0.05, double ndt=10):
     cdef double R_ou = rg.randn() * R_sigma
     cdef double R, R_prev, delta_t, nanotime, k_ET, d_prob_ph_em, k_emission
-    cdef np.int64_t t, t0#, ni=0
+    cdef double p, N
+    cdef np.int64_t t, t0
     cdef double p_DA, prob_A_em
     cdef Py_ssize_t iph, iN
     # Generate random number in chunks for efficiency
@@ -137,12 +132,13 @@ def sim_DA_from_timestamps2_p2_2states_cy(np.int64_t[:] timestamps,
     cdef double[:] dt = np.array([dt_ref]*2, dtype=np.float64)
     cdef double R_ou
     cdef double R, R_prev, delta_t, delta_t0, nanotime, k_ET, d_prob_ph_em, k_emission
-    cdef double k_s_sum, p_eq
+    cdef double k_s_sum, p, N, p_state, u
     #cdef double R_mean_i, R_sigma_i, tau_relax_i, dt_i
     cdef np.int64_t t, t0
     cdef double p_DA, prob_A_em
     cdef Py_ssize_t iph, iN
     cdef np.uint8_t state = 0
+    cdef np.float64_t[:] peq = np.zeros(2, dtype=np.float64)
     # Generate random number in chunks for efficiency
     cdef np.float64_t[:] Na, Pa
     # Array flagging photons as A (1) or D (0) emitted
@@ -159,8 +155,8 @@ def sim_DA_from_timestamps2_p2_2states_cy(np.int64_t[:] timestamps,
             print(f'WARNING: Reducing dt[{state}] to {dt[state]:g} '
                   f'[tau_relax[{state}] = {tau_relax[state]}]')
     k_s_sum = np.sum(k_s)
-    peq = [k_s[1] / (k_s[0] + k_s[1]),
-           k_s[0] / (k_s[0] + k_s[1])]
+    peq[0] = k_s[1] / (k_s[0] + k_s[1])
+    peq[1] = k_s[0] / (k_s[0] + k_s[1])
     state = 0  # the two states are 0 and 1
     R_ou = rg.randn() * R_sigma[state]
     iN = chunk_size - 1  # value to get the first chunk of random numbers
@@ -177,7 +173,7 @@ def sim_DA_from_timestamps2_p2_2states_cy(np.int64_t[:] timestamps,
             # the same macrotime
             delta_t = 0
             t = t0
-        p_state = (1 - peq[state]) * np.exp(-(delta_t0 * k_s_sum)) + peq[state]
+        p_state = (1 - peq[state]) * exp(-(delta_t0 * k_s_sum)) + peq[state]
         u = rg.rand()
         # Inversion of u is for compatibility with N-state version
         if state == 1:
@@ -248,10 +244,11 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(np.int64_t[:] timestamps,
     cdef double R_ou
     cdef double R, R_prev, delta_t, delta_t0, nanotime, k_ET, d_prob_ph_em, k_emission
     #cdef double R_mean_i, R_sigma_i, tau_relax_i, dt_i
+    cdef double p, N, p_state, u
     cdef np.int64_t t, t0
     cdef double p_DA, prob_A_em
-    cdef Py_ssize_t iph, iN
-    cdef Py_ssize_t state
+    cdef Py_ssize_t iph, iN, s, i
+    cdef Py_ssize_t state, newstate
     # Generate random number in chunks for efficiency
     cdef np.float64_t[:] Na, Pa
     # Array flagging photons as A (1) or D (0) emitted
@@ -262,11 +259,12 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(np.int64_t[:] timestamps,
     cdef np.float64_t[:] T_ph = np.zeros(len(timestamps), dtype=np.float64)
     # State for each photon
     cdef np.uint8_t[:] S_ph = np.zeros(len(timestamps), dtype=np.uint8)
-    cdef np.float64_t[:] state_vector, p_states
+    assert K_s.shape[0] == K_s.shape[1], 'K_s needs to be a square matrix.'
+    cdef np.uint8_t num_states = K_s.shape[0]
+    cdef np.float64_t[:] state_vector, p_states = np.zeros(num_states, dtype=np.float64)
     #cdef np.complex128_t[:] eigenval
     #cdef np.float64_t[:,:] V, V_inv
-    assert K_s.shape[0] == K_s.shape[1], 'K_s needs to be a square matrix.'
-    cdef num_states = K_s.shape[0]
+    cdef np.float64_t[:,:] D = np.zeros((num_states, num_states), dtype=np.float64)
     dt = np.array([dt_ref]*num_states, dtype=np.float64)
     for state in range(num_states):
         if tau_relax[state] < ndt * dt[state]:
@@ -277,6 +275,8 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(np.int64_t[:] timestamps,
     newstate = 0
     state_vector = np.zeros(num_states)
     state_vector[state] = 1
+    p_states[0] = 0.5
+    p_states[1] = 0.5
     R_ou = rg.randn() * R_sigma[state]
     iN = chunk_size - 1  # value to get the first chunk of random numbers
     eigenval, V, V_inv = ctmc.decompose(K_s)
@@ -293,10 +293,15 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(np.int64_t[:] timestamps,
             # the same macrotime
             delta_t = 0
             t = t0
-        p_states = ctmc.occupancy(
-            delta_t0, state_vector, K_s, eigenval, V, V_inv)
+        for i in range(num_states):
+            D[i,i] = eigenval[i] * t
+        P_t_matrix = (V @ D @ V_inv).real
+        p_states = state_vector @ P_t_matrix
+        #p_states = ctmc.occupancy(
+        #    delta_t0, state_vector, K_s, eigenval, V, V_inv)
         u = rg.rand()
-        for s, p_state in enumerate(p_states):
+        for s in range(num_states):
+            p_state = p_states[s]
             if u <= p_state:
                 newstate = s
                 break
