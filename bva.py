@@ -46,14 +46,16 @@ def bva_bin(burstsph_Dex, n, num_sub_bursts_th=60,
         - `E_sub_std_mean_bin`: the mean BVA in each E bins
         - `E_centers`: bin centers for each value in `E_sub_std_mean_bin`.
     """
-
     E_centers = E_bins[:-1] + 0.5 * (E_bins[1] - E_bins[0])
     burstsph_Dex_grp = burstsph_Dex.groupby('burst')
+    # compute raw E values from photon data
     Nd_plus_Na = burstsph_Dex_grp['stream'].count()
     Na = burstsph_Dex_grp['stream'].agg(lambda x: (x == 'DexAem').sum())
     E_raw = Na / Nd_plus_Na
-    E_raw_bins = pd.cut(E_raw, E_bins, labels=np.arange(E_bins.size - 1),
-                        include_lowest=True)
+    # index of the bin for each burst in E_raw
+    burst_indices = np.unique(burstsph_Dex.index.get_level_values('burst'))
+    E_raw_bins = pd.Series(np.digitize(E_raw, E_bins) - 1,
+                           index=burst_indices)
     E_sub_bursts_bin = defaultdict(list)
     DexAem = burstsph_Dex.stream == 'DexAem'
     for i in np.unique(burstsph_Dex.index.get_level_values('burst')):
@@ -63,10 +65,12 @@ def bva_bin(burstsph_Dex, n, num_sub_bursts_th=60,
             A_D = DexAem_burst[istart:istart + n].sum()
             E = A_D / n
             E_sub_bursts_bin[E_raw_bin].append(E)
-    E_sub_std_mean_bin = [np.std(E) if len(E) > num_sub_bursts_th else -1
-                          for i, E in sorted(E_sub_bursts_bin.items())]
+    E_sub_std_mean_bin = \
+        [np.std(E_sub_bursts_bin[i])
+         if len(E_sub_bursts_bin[i]) > num_sub_bursts_th else -1
+         for i in range(len(E_centers))]
     assert len(E_sub_std_mean_bin) == len(E_bins) - 1
-    return E_sub_std_mean_bin, E_centers
+    return np.array(E_sub_std_mean_bin), E_centers
 
 
 def bva_bin_combo(burstsph_Dex, n, num_sub_bursts_th=60,
@@ -94,23 +98,26 @@ def bva_bin_combo(burstsph_Dex, n, num_sub_bursts_th=60,
     """
     E_centers = E_bins[:-1] + 0.5 * (E_bins[1] - E_bins[0])
     burstsph_Dex_grp = burstsph_Dex.groupby('burst')
-    Nd_plus_Na = burstsph_Dex_grp['stream'].count()
-    Na = burstsph_Dex_grp['stream'].agg(lambda x: sum(x == 'DexAem'))
-    E_raw = Na / Nd_plus_Na
-    E_raw_bins = pd.cut(E_raw, E_bins, labels=np.arange(E_bins.size - 1),
-                        include_lowest=True)
-
+    # compute raw E values from photon data
+    E_raw = (burstsph_Dex_grp['stream']
+             .agg(lambda x: (x == 'DexAem').sum() / x.size))
+    # index of the left bin edges in E_bins for each burst in E_raw
+    burst_indices = np.unique(burstsph_Dex.index.get_level_values('burst'))
+    E_raw_bins = pd.Series(np.digitize(E_raw, E_bins) - 1,
+                           index=burst_indices)
     # standard deviation of sub-bursts in each burst
     E_sub_std = []
     # dict with bin index as key and values that are a list of lists.
     # The innermost list contains the E values of sub-bursts in a burst.
     E_sub_bursts_bin = defaultdict(list)
     DexAem = burstsph_Dex.stream == 'DexAem'
+    # Loop over each burst
     for i in np.unique(burstsph_Dex.index.get_level_values('burst')):
         DexAem_burst = DexAem.loc[i].values
         E_raw_bin = E_raw_bins.loc[i]
         # We initialize a list of sub-bursts for each burst
         E_sub_bursts = []
+        # Loop over each n-tuple of photons (i.e. sub-bursts)
         for istart in range(0, DexAem_burst.shape[0], n):
             A_D = DexAem_burst[istart:istart + n].sum()
             E = A_D / n
@@ -120,9 +127,9 @@ def bva_bin_combo(burstsph_Dex, n, num_sub_bursts_th=60,
         E_sub_std.append(np.std(E_sub_bursts))
     E_bin_len = {k: sum([len(x) for x in v])
                  for k, v in E_sub_bursts_bin.items()}
-    E_sub_std_mean_bin = [np.std(np.hstack(E_lists))
-                          if E_bin_len[i] > num_sub_bursts_th else -1
-                          for i, E_lists in sorted(E_sub_bursts_bin.items())]
-    assert len(E_sub_std_mean_bin) == len(E_bins) - 1
+    E_sub_std_mean_bin = [np.std(np.hstack(E_sub_bursts_bin[i]))
+                          if E_bin_len.get(i, 0) > num_sub_bursts_th else -1
+                          for i in range(len(E_centers))]
     E_sub_std = np.array(E_sub_std)
-    return E_sub_std, E_sub_std_mean_bin, E_centers
+    assert len(E_sub_std_mean_bin) == len(E_centers)
+    return E_sub_std, np.array(E_sub_std_mean_bin), E_centers
