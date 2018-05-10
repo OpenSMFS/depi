@@ -4,6 +4,7 @@ import pandas as pd
 import depi_cy
 from depi_cy import ou_single_step_cy
 import ctmc
+import dist_distrib as dd
 
 
 def E_from_dist(x, R0):
@@ -58,7 +59,84 @@ def calc_E_burst(burstsph):
     return E
 
 
-def recolor_burstsph_OU_gauss_R(timestamps, R0, R_mean, R_sigma,
+def _check_args(τ_relax, ndt, α):
+    if all(np.atleast_1d(np.asarray(τ_relax)) == 0) and ndt > 0:
+        raise ValueError('When τ_relax = 0 also ndt needs to be 0 '
+                         'in order to avoid a 0 time-step size.')
+    if α <= 0:
+        raise ValueError(f'α needs to be strictly positive. It is {α}.')
+
+
+def _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph):
+    burstsph_sim = pd.DataFrame(timestamps)
+    burstsph_sim['nanotime'] = T_ph
+    burstsph_sim['stream'] = (
+        pd.Categorical.from_codes(A_em, categories=["DexDem", "DexAem"]))
+    burstsph_sim['R_ph'] = R_ph
+    if S_ph is not None:
+        burstsph_sim['state'] = S_ph
+    return burstsph_sim
+
+
+def recolor_burstsph(timestamps, R0, τ_relax, τ_D, τ_A, δt,
+                     k_s=None, rg=None, chunk_size=1000, α=0.05, ndt=10,
+                     **dd_model):
+    name = dd_model.pop('name').lower()
+    if name.startswith('gauss'):
+        func = recolor_burstsph_OU_gauss_R
+    elif name.startswith('wlc'):
+        func = recolor_burstsph_OU_WLC
+    else:
+        raise ValueError('Distance model "{name}" not recognized.')
+    return func(timestamps, R0=R0, τ_relax=τ_relax, τ_D=τ_D, τ_A=τ_A, δt=δt,
+                k_s=k_s, rg=rg, chunk_size=chunk_size, α=α, ndt=ndt,
+                **dd_model)
+
+
+def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, L, lp, offset,
+                            τ_D, τ_A, δt, du, u_max, dr,
+                            k_s=None, rg=None, chunk_size=1000,
+                            α=0.05, ndt=10):
+    _check_args(τ_relax, ndt, α)
+    if rg is None:
+        rg = np.random.RandomState()
+    k_D = 1 / τ_D
+    ts = timestamps.values
+    # Use the size of L to infer the number of states
+    num_states = np.size(L)
+    if num_states == 1:
+        S_ph = None
+        func = depi_cy.sim_DA_from_timestamps2_p2_dist_cy
+        p = dict(τ_relax=τ_relax, L=L, lp=lp, offset=offset)
+        p = {k: v if np.isscalar(v) else v[0] for k, v in p.items()}
+        r_wlc, idx_offset_wlc = dd.get_r_wlc(
+            du=du, u_max=u_max, dr=dr, L=p['L'], lp=p['lp'],
+            offset=p['offset'])
+        A_em, R_ph, T_ph = func(ts, δt, k_D, R0, p['τ_relax'],
+                                r_wlc, idx_offset_wlc, du,
+                                rg=rg, chunk_size=chunk_size,
+                                alpha=α, ndt=ndt)
+    else:
+        raise NotImplementedError('Multi-state with WLC not yet implemented!')
+        # Check that all parameters have length equal to num_states
+        p = dict(L=L, lp=lp, τ_relax=τ_relax)
+        k_s, func = _check_params_nstates(
+            p, k_s, num_states,
+            func_2state=depi_cy.to_be_implemented,  # CHANGE THIS
+            func_nstate=depi_cy.to_be_implemented)  # CHANGE THIS
+        params = (np.asarray(L), np.asarray(lp),
+                  np.asarray(τ_relax), np.asarray(k_s))
+        A_em, R_ph, T_ph, S_ph = func(
+            ts, δt, k_D, R0, *params,
+            rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
+    A_mask = A_em.view(bool)
+    T_ph = np.asarray(T_ph)
+    # Add exponentially distributed lifetimes to A nanotimes
+    T_ph[A_mask] += rg.exponential(scale=τ_A, size=A_mask.sum())
+    return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
+
+
+def recolor_burstsph_OU_gauss_R(timestamps, *, R0, R_mean, R_sigma,
                                 τ_relax, τ_D, τ_A, δt, k_s=None, rg=None,
                                 chunk_size=1000, α=0.05, ndt=10, cdf=True):
     """Recolor burst photons with Ornstein–Uhlenbeck D-A distance diffusion.
@@ -117,43 +195,29 @@ def recolor_burstsph_OU_gauss_R(timestamps, R0, R_mean, R_sigma,
     """
     if rg is None:
         rg = np.random.RandomState()
-    if all(np.atleast_1d(np.asarray(τ_relax)) == 0) and ndt > 0:
-        raise ValueError('When τ_relax = 0 also ndt needs to be 0 '
-                         'in order to avoid a 0 time-step size.')
-    if α <= 0:
-        raise ValueError(f'α needs to be strictly positive. It is {α}.')
+    _check_args(τ_relax, ndt, α)
     k_D = 1 / τ_D
     ts = timestamps.values
     # Use the size of R_mean to infer the number of states
-    if np.size(R_mean) == 1:
+    num_states = np.size(R_mean)
+    if num_states == 1:
+        S_ph = None
         if cdf:
             func = depi_cy.sim_DA_from_timestamps2_p2_cy
         else:
             func = depi_cy.sim_DA_from_timestamps2_p_cy
-        params = R_mean[0], R_sigma[0], τ_relax[0]
-        A_em, R_ph, T_ph = func(ts, δt, k_D, R0, *params,
-                                rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-    else:
-        # Check that all parameters have length 2
-        num_states = len(R_mean)
         p = dict(R_mean=R_mean, R_sigma=R_sigma, τ_relax=τ_relax)
-        for name, val in p.items():
-            m = f'Argument "{name}" (={val}) should be of length {num_states}.'
-            assert np.size(val) == num_states, m
-        k_s = np.asarray(k_s)
-        if num_states == 1:
-            m = f'"k_s" (={k_s}) should be a 1d array or length 1 (# states = 1).'
-            assert np.size(k_s) == 1, m
-        elif k_s.ndim == 1:
-            m = f'"k_s" (={k_s}) should an {num_states}x{num_states} array.'
-            assert num_states == 2, m
-            m = f'"k_s" (={k_s}) should be a 2-element 1d array or an 2x2 array.'
-            assert np.size(k_s) == 2, m
-            func = depi_cy.sim_DA_from_timestamps2_p2_2states_cy
-        else:
-            m = f'"k_s" (={k_s}) should be an {num_states}x{num_states} array.'
-            assert k_s.ndim == 2 and k_s.shape[0] == k_s.shape[1], m
-            func = depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy
+        p = {k: v if np.isscalar(v) else v[0] for k, v in p.items()}
+        A_em, R_ph, T_ph = func(ts, δt, k_D, R0, p['R_mean'], p['R_sigma'],
+                                p['τ_relax'], rg=rg, chunk_size=chunk_size,
+                                alpha=α, ndt=ndt)
+    else:
+        # Check that all parameters have length equal to num_states
+        p = dict(R_mean=R_mean, R_sigma=R_sigma, τ_relax=τ_relax)
+        k_s, func = _check_params_nstates(
+            p, k_s, num_states,
+            func_2state=depi_cy.sim_DA_from_timestamps2_p2_2states_cy,
+            func_nstate=depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy)
         params = (np.asarray(R_mean), np.asarray(R_sigma),
                   np.asarray(τ_relax), np.asarray(k_s))
         A_em, R_ph, T_ph, S_ph = func(
@@ -163,14 +227,25 @@ def recolor_burstsph_OU_gauss_R(timestamps, R0, R_mean, R_sigma,
     T_ph = np.asarray(T_ph)
     # Add exponentially distributed lifetimes to A nanotimes
     T_ph[A_mask] += rg.exponential(scale=τ_A, size=A_mask.sum())
-    burstsph_sim = pd.DataFrame(timestamps)
-    burstsph_sim['nanotime'] = T_ph
-    burstsph_sim['stream'] = (
-        pd.Categorical.from_codes(A_em, categories=["DexDem", "DexAem"]))
-    burstsph_sim['R_ph'] = R_ph
-    if np.size(R_mean) == 2:
-        burstsph_sim['state'] = S_ph
-    return burstsph_sim
+    return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
+
+
+def _check_params_nstates(p, k_s, num_states, func_2state, func_nstate):
+    for name, val in p.items():
+        m = f'Argument "{name}" (={val}) should be of length {num_states}.'
+        assert np.size(val) == num_states, m
+    k_s = np.asarray(k_s)
+    if k_s.ndim == 1:
+        m = f'"k_s" (={k_s}) should an {num_states}x{num_states} array.'
+        assert num_states == 2, m
+        m = f'"k_s" (={k_s}) should be a 2-element 1d array or an 2x2 array.'
+        assert np.size(k_s) == 2, m
+        func = depi_cy.sim_DA_from_timestamps2_p2_2states_cy
+    else:
+        m = f'"k_s" (={k_s}) should be an {num_states}x{num_states} array.'
+        assert k_s.ndim == 2 and k_s.shape[0] == k_s.shape[1], m
+        func = depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy
+    return k_s, func
 
 
 #
