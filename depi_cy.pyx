@@ -365,7 +365,7 @@ def sim_DA_from_timestamps2_p2_Nstates_dist_cy(
     assert K_s.shape[0] == K_s.shape[1], 'K_s needs to be a square matrix.'
     cdef np.uint8_t num_states = K_s.shape[0]
     cdef np.float64_t[:] state_vector, p_states = np.zeros(num_states, dtype=np.float64)
-    cdef np.float64_t[:,:] D = np.zeros((num_states, num_states), dtype=np.float64)
+    cdef np.complex128_t[:,:] D = np.zeros((num_states, num_states), dtype=np.complex128)
 
     dt = np.array([dt_ref]*num_states, dtype=np.float64)
     for state in range(num_states):
@@ -513,7 +513,7 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(np.int64_t[:] timestamps,
     cdef np.float64_t[:] state_vector, p_states = np.zeros(num_states, dtype=np.float64)
     #cdef np.complex128_t[:] eigenval
     #cdef np.float64_t[:,:] V, V_inv
-    cdef np.float64_t[:,:] D = np.zeros((num_states, num_states), dtype=np.float64)
+    cdef np.complex128_t[:,:] D = np.zeros((num_states, num_states), dtype=np.complex128)
     dt = np.array([dt_ref]*num_states, dtype=np.float64)
     for state in range(num_states):
         if tau_relax[state] < ndt * dt[state]:
