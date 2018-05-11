@@ -52,8 +52,10 @@ def calc_E_burst(burstsph):
                           columns=['size_raw'])
     bursts['istart'] = np.hstack([[0], np.cumsum(bursts.size_raw)[:-1]])
     bursts['istop'] = np.cumsum(bursts.size_raw.values)
-    A_em = burstsph.stream.cat.codes  # get stream as 1 (DexDem) and 0 (DexAem)
-    E = [A_em[istart:istop].sum() / bsize
+    #A_em = burstsph.stream.cat.codes  # get stream as 1 (DexDem) and 0 (DexAem)
+    A_em = burstsph.stream == 'DexAem'
+    D_ex = (burstsph.stream == 'DexDem') | (burstsph.stream == 'DexAem')
+    E = [A_em[istart:istop].sum() / D_ex[istart:istop].sum()
          for istart, istop, bsize in
          zip(bursts.istart, bursts.istop, bursts.size_raw)]
     return E
@@ -85,9 +87,10 @@ def recolor_burstsph(timestamps, R0, τ_relax, τ_D, τ_A, δt,
     if name.startswith('gauss'):
         func = recolor_burstsph_OU_gauss_R
     elif name.startswith('wlc'):
+        print('WLC mode', flush=True)
         func = recolor_burstsph_OU_WLC
     else:
-        raise ValueError('Distance model "{name}" not recognized.')
+        raise ValueError(f'Distance model "{name}" not recognized.')
     return func(timestamps, R0=R0, τ_relax=τ_relax, τ_D=τ_D, τ_A=τ_A, δt=δt,
                 k_s=k_s, rg=rg, chunk_size=chunk_size, α=α, ndt=ndt,
                 **dd_model)
@@ -98,6 +101,7 @@ def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, L, lp, offset,
                             k_s=None, rg=None, chunk_size=1000,
                             α=0.05, ndt=10):
     _check_args(τ_relax, ndt, α)
+    print('WLC func', flush=True)
     if rg is None:
         rg = np.random.RandomState()
     k_D = 1 / τ_D
@@ -117,17 +121,32 @@ def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, L, lp, offset,
                                 rg=rg, chunk_size=chunk_size,
                                 alpha=α, ndt=ndt)
     else:
-        raise NotImplementedError('Multi-state with WLC not yet implemented!')
-        # Check that all parameters have length equal to num_states
+        print(f'WLC func: num_states {num_states}', flush=True)
+        # Check that state parameters have length equal to num_states
         p = dict(L=L, lp=lp, τ_relax=τ_relax)
         k_s, func = _check_params_nstates(
             p, k_s, num_states,
-            func_2state=depi_cy.to_be_implemented,  # CHANGE THIS
-            func_nstate=depi_cy.to_be_implemented)  # CHANGE THIS
-        params = (np.asarray(L), np.asarray(lp),
-                  np.asarray(τ_relax), np.asarray(k_s))
+            func_2state=None,  # CHANGE THIS
+            func_nstate=depi_cy.sim_DA_from_timestamps2_p2_Nstates_dist_cy)
+        print(f'WLC func: k_s {k_s}', flush=True)
+        print(f'WLC func: func.__name__ {func.__name__}', flush=True)
+        r_wlc_list, idx_offset_wlc_list = [], []
+        for i in range(num_states):
+            print(f'WLC func: dd state {i}', flush=True)
+            r_wlc, idx_offset_wlc = dd.get_r_wlc(
+                du=du, u_max=u_max, dr=dr, L=L[i], lp=lp[i], offset=offset[i])
+            r_wlc_list.append(r_wlc)
+            idx_offset_wlc_list.append(idx_offset_wlc)
+        print(f'WLC func: idx_offset_wlc_list {idx_offset_wlc_list}', flush=True)
+        print(f'WLC func: r_wlc_list {r_wlc_list}', flush=True)
+        r_dd = np.vstack(r_wlc_list)
+        print(f'WLC func: r_dd.shape {r_dd.shape}', flush=True)
+        idx_offset_dd = np.array(idx_offset_wlc_list, dtype='int64')
+        print(f'WLC func: idx_offset_dd {idx_offset_dd}', flush=True)
+        #assert func == depi_cy.sim_DA_from_timestamps2_p2_Nstates_dist_cy
+        print(f'calling {func.__name__}', flush=True)
         A_em, R_ph, T_ph, S_ph = func(
-            ts, δt, k_D, R0, *params,
+            ts, δt, k_D, R0, np.asarray(τ_relax), k_s, r_dd, idx_offset_dd, du,
             rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     A_mask = A_em.view(bool)
     T_ph = np.asarray(T_ph)
@@ -240,11 +259,11 @@ def _check_params_nstates(p, k_s, num_states, func_2state, func_nstate):
         assert num_states == 2, m
         m = f'"k_s" (={k_s}) should be a 2-element 1d array or an 2x2 array.'
         assert np.size(k_s) == 2, m
-        func = depi_cy.sim_DA_from_timestamps2_p2_2states_cy
+        func = func_2state
     else:
         m = f'"k_s" (={k_s}) should be an {num_states}x{num_states} array.'
         assert k_s.ndim == 2 and k_s.shape[0] == k_s.shape[1], m
-        func = depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy
+        func = func_nstate
     return k_s, func
 
 
