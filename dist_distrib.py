@@ -6,15 +6,14 @@ def gaussian(r, mu=0, sig=1):
     return np.exp(-(u**2) / 2) / (sig * np.sqrt(2 * np.pi))
 
 
-def wormlike_chain(r, L, lp, offset=0, c=1):
+def wormlike_chain(r, L, lp, offset=0):
     res = np.zeros_like(r)
     ro = r - offset
-    valid = ro < L
+    valid = (ro < L) * (ro > 0)
     res[~valid] = 0
     ro_valid = ro[valid]
     F = 1 - (ro_valid / L)**2
-    res[valid] = (np.exp(- (9 * L) / (8 * lp * F))
-                  * c * ro_valid**2 / F**(9 / 2))
+    res[valid] = np.exp(- (9 / 8) * (L / lp) / F) * ro_valid**2 / F**(9 / 2)
     return res
 
 
