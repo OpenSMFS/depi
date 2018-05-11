@@ -87,7 +87,6 @@ def recolor_burstsph(timestamps, R0, τ_relax, τ_D, τ_A, δt,
     if name.startswith('gauss'):
         func = recolor_burstsph_OU_gauss_R
     elif name.startswith('wlc'):
-        print('WLC mode', flush=True)
         func = recolor_burstsph_OU_WLC
     else:
         raise ValueError(f'Distance model "{name}" not recognized.')
@@ -101,7 +100,6 @@ def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, L, lp, offset,
                             k_s=None, rg=None, chunk_size=1000,
                             α=0.05, ndt=10):
     _check_args(τ_relax, ndt, α)
-    print('WLC func', flush=True)
     if rg is None:
         rg = np.random.RandomState()
     k_D = 1 / τ_D
@@ -126,25 +124,16 @@ def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, L, lp, offset,
         p = dict(L=L, lp=lp, τ_relax=τ_relax)
         k_s, func = _check_params_nstates(
             p, k_s, num_states,
-            func_2state=None,  # CHANGE THIS
+            func_2state=depi_cy.sim_DA_from_timestamps2_p2_2states_dist_cy,
             func_nstate=depi_cy.sim_DA_from_timestamps2_p2_Nstates_dist_cy)
-        print(f'WLC func: k_s {k_s}', flush=True)
-        print(f'WLC func: func.__name__ {func.__name__}', flush=True)
         r_wlc_list, idx_offset_wlc_list = [], []
         for i in range(num_states):
-            print(f'WLC func: dd state {i}', flush=True)
             r_wlc, idx_offset_wlc = dd.get_r_wlc(
                 du=du, u_max=u_max, dr=dr, L=L[i], lp=lp[i], offset=offset[i])
             r_wlc_list.append(r_wlc)
             idx_offset_wlc_list.append(idx_offset_wlc)
-        print(f'WLC func: idx_offset_wlc_list {idx_offset_wlc_list}', flush=True)
-        print(f'WLC func: r_wlc_list {r_wlc_list}', flush=True)
         r_dd = np.vstack(r_wlc_list)
-        print(f'WLC func: r_dd.shape {r_dd.shape}', flush=True)
         idx_offset_dd = np.array(idx_offset_wlc_list, dtype='int64')
-        print(f'WLC func: idx_offset_dd {idx_offset_dd}', flush=True)
-        #assert func == depi_cy.sim_DA_from_timestamps2_p2_Nstates_dist_cy
-        print(f'calling {func.__name__}', flush=True)
         A_em, R_ph, T_ph, S_ph = func(
             ts, δt, k_D, R0, np.asarray(τ_relax), k_s, r_dd, idx_offset_dd, du,
             rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)

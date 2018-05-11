@@ -336,6 +336,116 @@ def sim_DA_from_timestamps2_p2_2states_cy(np.int64_t[:] timestamps,
     return np.asarray(A_ph), np.asarray(R_ph), np.asarray(T_ph), np.asarray(S_ph)
 
 
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+def sim_DA_from_timestamps2_p2_2states_dist_cy(
+        np.int64_t[:] timestamps, double dt_ref, double k_D, double R0,
+        double[:] tau_relax, double[:] k_s,
+        double[:,:] r_dd, Py_ssize_t[:] idx_offset_dd, double du_norm,
+        *, rg, int chunk_size=1000, double alpha=0.05, double ndt=10):
+    cdef double[:] dt = np.array([dt_ref]*2, dtype=np.float64)
+    cdef double R_ou
+    cdef double R, R_prev, delta_t, delta_t0, nanotime, k_ET, d_prob_ph_em, k_emission
+    cdef double k_s_sum, p, N, p_state, u
+    cdef np.int64_t t, t0
+    cdef double p_DA, prob_A_em
+    cdef Py_ssize_t iph, iN, ix
+    cdef np.uint8_t state = 0
+    cdef np.float64_t[:] peq = np.zeros(2, dtype=np.float64)
+    # Generate random number in chunks for efficiency
+    cdef np.float64_t[:] Na, Pa
+    # Array flagging photons as A (1) or D (0) emitted
+    cdef np.uint8_t[:] A_ph = np.zeros(len(timestamps), dtype=np.uint8)
+    # Istantaneous D-A distance at D de-excitation time
+    cdef np.float64_t[:] R_ph = np.zeros(len(timestamps), dtype=np.float64)
+    # Time of D de-excitation relative to the last timestamp
+    cdef np.float64_t[:] T_ph = np.zeros(len(timestamps), dtype=np.float64)
+    # State for each photon
+    cdef np.uint8_t[:] S_ph = np.zeros(len(timestamps), dtype=np.uint8)
+    for state in [0, 1]:
+        if tau_relax[state] < ndt * dt[state]:
+            dt[state] = tau_relax[state] / ndt
+            print(f'WARNING: Reducing dt[{state}] to {dt[state]:g} '
+                  f'[tau_relax[{state}] = {tau_relax[state]}]')
+    k_s_sum = np.sum(k_s)
+    peq[0] = k_s[1] / (k_s[0] + k_s[1])
+    peq[1] = k_s[0] / (k_s[0] + k_s[1])
+    state = 0  # the two states are 0 and 1
+    R_ou = rg.randn()
+    iN = chunk_size - 1  # value to get the first chunk of random numbers
+    t0 = 0
+    nanotime = 0
+    for iph in range(len(timestamps)):
+        t = timestamps[iph]
+        # each cycle starts with a new photon timestamp `t`
+        # excitation time is `t`, emission time is `t + nanotime`
+        delta_t0 = t - t0
+        delta_t = delta_t0 - nanotime
+        if delta_t < 0:
+            # avoid negative delta_t possible when when two photons have
+            # the same macrotime
+            delta_t = 0
+            t = t0
+        p_state = (1 - peq[state]) * exp(-(delta_t0 * k_s_sum)) + peq[state]
+        u = rg.rand()
+        # Inversion of u is for compatibility with N-state version
+        if state == 1:
+            u = 1 - u
+        if p_state <= u:
+            state = 0 if state == 1 else 1
+            R_ou = rg.randn()
+        # Compute the D-A distance at the "excitation time"
+        iN += 1
+        if iN == chunk_size:
+            Na = rg.randn(chunk_size)
+            Pa = rg.rand(chunk_size)
+            iN = 0
+        N = Na[iN]
+        p = Pa[iN]
+        R_ou = ou_single_step_cy0(R_ou, delta_t, N, 1, tau_relax[state])
+        ix = int(round(R_ou / du_norm)) + idx_offset_dd[state]
+        R = r_dd[state, ix]
+        nanotime = 0
+        # loop through D-A diffusion steps with a fixed time-step dt
+        # until D de-excitation (by photon emission or energy transfer to A)
+        while True:
+            k_ET = k_D * (R0 / R)**6
+            k_emission = k_ET + k_D
+            d_prob_ph_em = k_emission * dt[state]
+            if d_prob_ph_em > alpha:
+                d_prob_ph_em = 1 - exp(-d_prob_ph_em)
+            if d_prob_ph_em >= p:
+                break   # break out of the loop when the photon is emitted
+            nanotime += dt[state]
+            iN += 1
+            if iN == chunk_size:
+                Na = rg.randn(chunk_size)
+                Pa = rg.rand(chunk_size)
+                iN = 0
+            N = Na[iN]
+            p = Pa[iN]
+            # Update R following the OU process
+            R_ou = ou_single_step_cy0(R_ou, dt[state], N, 1, tau_relax[state])
+            ix = int(round(R_ou / du_norm)) + idx_offset_dd[state]
+            R = r_dd[state, ix]
+        # photon emitted, let's decide if it is from D or A
+        p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
+        prob_A_em = k_ET / k_emission
+        if prob_A_em >= p_DA:
+            A_ph[iph] = 1
+        # time of D de-excitation by photon emission or energy transfer to A
+        t0 = t
+        # save D-A distance at emission time
+        R_ph[iph] = R
+        # save time of emission relative to the excitation time `t`
+        T_ph[iph] = nanotime
+        # Save state for current photon
+        S_ph[iph] = state
+    return np.asarray(A_ph), np.asarray(R_ph), np.asarray(T_ph), np.asarray(S_ph)
+
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)

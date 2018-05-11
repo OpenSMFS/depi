@@ -34,7 +34,6 @@ def plot_R_distrib(params, ax=None):
     if ax is None:
         _, ax = plt.subplots()
     name = params.copy().pop('name').lower()
-    fract = ctmc.CT_stationary_distribution(np.asarray(params['k_s']))
     if name.startswith('gauss'):
         print('Gaussian model', flush=True)
         func = plot_R_distrib_gauss
@@ -43,18 +42,23 @@ def plot_R_distrib(params, ax=None):
         func = plot_R_distrib_wlc
     else:
         raise ValueError(f'Distance model "{name}" not recognized.')
-    ax = func(params, fract, ax)
+    ax = func(params, ax)
     ax.axvline(params['R0'], color='r', ls='--')
     return ax
 
 
-def plot_R_distrib_gauss(params, fract, ax):
+def plot_R_distrib_gauss(params, ax):
     R_mean, R_sigma = params['R_mean'], params['R_sigma']
     num_states = np.size(params['R_mean'])
     if num_states == 1:
         r = np.arange(0, R_mean + 5 * R_sigma, R_sigma / 20)
         y = dd.gaussian(r, R_mean, R_sigma)
     else:
+        k_s = np.array(params['k_s'])
+        if k_s.ndim == 1:
+            fract = np.array([k_s[1] / (k_s.sum()), k_s[0] / (k_s.sum())])
+        else:
+            fract = ctmc.CT_stationary_distribution(np.asarray(params['k_s']))
         r = np.arange(0, np.max(R_mean) + 5 * np.max(R_sigma),
                       np.min(R_sigma) / 20)
         y = np.zeros_like(r)
@@ -64,7 +68,7 @@ def plot_R_distrib_gauss(params, fract, ax):
     return ax
 
 
-def plot_R_distrib_wlc(params, fract, ax):
+def plot_R_distrib_wlc(params, ax):
     L, lp, offset = params['L'], params['lp'], params['offset']
     num_states = np.size(L)
     if num_states == 1:
@@ -72,6 +76,11 @@ def plot_R_distrib_wlc(params, fract, ax):
         y = dd.wormlike_chain(r, L, lp, offset=offset)
         y /= np.trapz(y, r)
     else:
+        k_s = np.array(params['k_s'])
+        if k_s.ndim == 1:
+            fract = np.array([k_s[1] / (k_s.sum()), k_s[0] / (k_s.sum())])
+        else:
+            fract = ctmc.CT_stationary_distribution(np.asarray(params['k_s']))
         r = np.arange(0, np.max(L) + np.max(offset) , np.min(L) / 100)
         y = np.zeros_like(r)
         for i in range(num_states):
