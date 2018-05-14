@@ -55,11 +55,11 @@ cdef inline double ou_single_step_cy0(double x0, double delta_t, double N,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def sim_DA_from_timestamps2_p2_cy(np.int64_t[:] timestamps, double dt,
-                                  double k_D, double R0, double R_mean,
-                                  double R_sigma, double tau_relax, rg,
-                                  int chunk_size=1000,
-                                  double alpha=0.05, double ndt=10):
+def sim_DA_from_timestamps2_p2_cy(
+        np.int64_t[:] timestamps, double dt, double k_D, double R0,
+        double R_mean, double R_sigma, double tau_relax,
+        *, double gamma=1.0, rg=np.random.RandomState(),
+        int chunk_size=1000, double alpha=0.05, double ndt=10):
     cdef double R_ou = rg.randn() * R_sigma
     cdef double R, R_prev, delta_t, nanotime, k_ET, d_prob_ph_em, k_emission
     cdef double p, N
@@ -126,7 +126,7 @@ def sim_DA_from_timestamps2_p2_cy(np.int64_t[:] timestamps, double dt,
 
         # photon emitted, let's decide if it is from D or A
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
-        prob_A_em = k_ET / k_emission
+        prob_A_em = k_ET / (k_ET + k_D / gamma)
         if prob_A_em >= p_DA:
             A_ph[iph] = True
         # time of D de-excitation by photon emission or energy transfer to A
@@ -141,12 +141,12 @@ def sim_DA_from_timestamps2_p2_cy(np.int64_t[:] timestamps, double dt,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def sim_DA_from_timestamps2_p2_dist_cy(np.int64_t[:] timestamps, double dt,
-                                  double k_D, double R0, double tau_relax,
-                                  double[:] r_dd, Py_ssize_t idx_offset_dd,
-                                  double du_norm,
-                                  rg, int chunk_size=1000,
-                                  double alpha=0.05, double ndt=10):
+def sim_DA_from_timestamps2_p2_dist_cy(
+        np.int64_t[:] timestamps, double dt, double k_D, double R0,
+        double tau_relax,
+        double[:] r_dd, Py_ssize_t idx_offset_dd, double du_norm,
+        *, double gamma=1.0, rg=np.random.RandomState(),
+        int chunk_size=1000, double alpha=0.05, double ndt=10):
     cdef double R_ou = rg.randn()
     cdef double R, delta_t, nanotime, k_ET, d_prob_ph_em, k_emission
     cdef double p, N
@@ -213,7 +213,7 @@ def sim_DA_from_timestamps2_p2_dist_cy(np.int64_t[:] timestamps, double dt,
 
         # photon emitted, let's decide if it is from D or A
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
-        prob_A_em = k_ET / k_emission
+        prob_A_em = k_ET / (k_ET + k_D / gamma)
         if prob_A_em >= p_DA:
             A_ph[iph] = True
         # time of D de-excitation by photon emission or energy transfer to A
@@ -228,9 +228,11 @@ def sim_DA_from_timestamps2_p2_dist_cy(np.int64_t[:] timestamps, double dt,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def sim_DA_from_timestamps2_p2_2states_cy(np.int64_t[:] timestamps,
-        double dt_ref, double k_D, double R0, double[:] R_mean,
-        double[:] R_sigma, double[:] tau_relax, double[:] k_s, *, rg,
+def sim_DA_from_timestamps2_p2_2states_cy(
+        np.int64_t[:] timestamps, double dt_ref, double k_D, double R0,
+        double[:] R_mean, double[:] R_sigma,
+        double[:] tau_relax, double[:] k_s,
+        *, double gamma=1.0, rg=np.random.RandomState(),
         int chunk_size=1000, double alpha=0.05, double ndt=10):
     cdef double[:] dt = np.array([dt_ref]*2, dtype=np.float64)
     cdef double R_ou
@@ -344,7 +346,8 @@ def sim_DA_from_timestamps2_p2_2states_dist_cy(
         np.int64_t[:] timestamps, double dt_ref, double k_D, double R0,
         double[:] tau_relax, double[:] k_s,
         double[:,:] r_dd, Py_ssize_t[:] idx_offset_dd, double du_norm,
-        *, rg, int chunk_size=1000, double alpha=0.05, double ndt=10):
+        *, double gamma=1.0, rg=np.random.RandomState(),
+        int chunk_size=1000, double alpha=0.05, double ndt=10):
     cdef double[:] dt = np.array([dt_ref]*2, dtype=np.float64)
     cdef double R_ou
     cdef double R, R_prev, delta_t, delta_t0, nanotime, k_ET, d_prob_ph_em, k_emission
@@ -432,7 +435,7 @@ def sim_DA_from_timestamps2_p2_2states_dist_cy(
             R = r_dd[state, ix]
         # photon emitted, let's decide if it is from D or A
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
-        prob_A_em = k_ET / k_emission
+        prob_A_em = k_ET / (k_ET + k_D / gamma)
         if prob_A_em >= p_DA:
             A_ph[iph] = 1
         # time of D de-excitation by photon emission or energy transfer to A
@@ -453,7 +456,8 @@ def sim_DA_from_timestamps2_p2_Nstates_dist_cy(
         np.int64_t[:] timestamps, double dt_ref, double k_D, double R0,
         double[:] tau_relax, double[:,:] K_s,
         double[:,:] r_dd, Py_ssize_t[:] idx_offset_dd, double du_norm,
-        *, rg, int chunk_size=1000, double alpha=0.05, double ndt=10):
+        *, double gamma=1.0, rg=np.random.RandomState(),
+        int chunk_size=1000, double alpha=0.05, double ndt=10):
     cdef double[:] dt
     cdef double R_ou
     cdef double R, R_prev, delta_t, delta_t0, nanotime, k_ET, d_prob_ph_em, k_emission
@@ -558,7 +562,7 @@ def sim_DA_from_timestamps2_p2_Nstates_dist_cy(
             R = r_dd[state, ix]
         # photon emitted, let's decide if it is from D or A
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
-        prob_A_em = k_ET / k_emission
+        prob_A_em = k_ET / (k_ET + k_D / gamma)
         if prob_A_em >= p_DA:
             A_ph[iph] = 1
         # time of D de-excitation by photon emission or energy transfer to A
@@ -595,9 +599,11 @@ def _state_sel(R_ou, num_states, state, t, eigenval, V, V_inv, D, P_t_matrix,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def sim_DA_from_timestamps2_p2_Nstates_cy(np.int64_t[:] timestamps,
-        double dt_ref, double k_D, double R0, double[:] R_mean,
-        double[:] R_sigma, double[:] tau_relax, double[:,:] K_s, *, rg,
+def sim_DA_from_timestamps2_p2_Nstates_cy(
+        np.int64_t[:] timestamps, double dt_ref, double k_D, double R0,
+        double[:] R_mean, double[:] R_sigma,
+        double[:] tau_relax, double[:,:] K_s,
+        *, double gamma=1.0, rg=np.random.RandomState(),
         int chunk_size=1000, double alpha=0.05, double ndt=10):
     cdef double[:] dt
     cdef double R_ou
@@ -707,7 +713,7 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(np.int64_t[:] timestamps,
             R = R_ou + R_mean[state]
         # photon emitted, let's decide if it is from D or A
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
-        prob_A_em = k_ET / k_emission
+        prob_A_em = k_ET / (k_ET + k_D / gamma)
         if prob_A_em >= p_DA:
             A_ph[iph] = 1
         # time of D de-excitation by photon emission or energy transfer to A
@@ -724,9 +730,11 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(np.int64_t[:] timestamps,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def sim_DA_from_timestamps2_p2_Nstates_cym(np.int64_t[:] timestamps,
-        double dt_ref, double k_D, double R0, double[:] R_mean,
-        double[:] R_sigma, double[:] tau_relax, double[:,:] K_s, *, rg,
+def sim_DA_from_timestamps2_p2_Nstates_cym(
+        np.int64_t[:] timestamps, double dt_ref, double k_D, double R0,
+        double[:] R_mean, double[:] R_sigma,
+        double[:] tau_relax, double[:,:] K_s,
+        *, double gamma=1.0, rg=np.random.RandomState(),
         int chunk_size=1000, double alpha=0.05, double ndt=10):
     cdef double[:] dt
     cdef double R_ou
@@ -841,7 +849,7 @@ def sim_DA_from_timestamps2_p2_Nstates_cym(np.int64_t[:] timestamps,
             R = R_ou + R_mean[state]
         # photon emitted, let's decide if it is from D or A
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
-        prob_A_em = k_ET / k_emission
+        prob_A_em = k_ET / (k_ET + k_D / gamma)
         if prob_A_em >= p_DA:
             A_ph[iph] = 1
         # time of D de-excitation by photon emission or energy transfer to A

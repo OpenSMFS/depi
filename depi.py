@@ -80,7 +80,7 @@ def _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph):
     return burstsph_sim
 
 
-def recolor_burstsph(timestamps, R0, τ_relax, τ_D, τ_A, δt,
+def recolor_burstsph(timestamps, R0, τ_relax, τ_D, τ_A, δt, gamma=1.0,
                      k_s=None, rg=None, chunk_size=1000, α=0.05, ndt=10,
                      **dd_model):
     name = dd_model.pop('name').lower()
@@ -91,11 +91,11 @@ def recolor_burstsph(timestamps, R0, τ_relax, τ_D, τ_A, δt,
     else:
         raise ValueError(f'Distance model "{name}" not recognized.')
     return func(timestamps, R0=R0, τ_relax=τ_relax, τ_D=τ_D, τ_A=τ_A, δt=δt,
-                k_s=k_s, rg=rg, chunk_size=chunk_size, α=α, ndt=ndt,
-                **dd_model)
+                k_s=k_s, gamma=gamma, rg=rg, chunk_size=chunk_size, α=α,
+                ndt=ndt, **dd_model)
 
 
-def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, L, lp, offset,
+def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, gamma, L, lp, offset,
                             τ_D, τ_A, δt, du, u_max, dr,
                             k_s=None, rg=None, chunk_size=1000,
                             α=0.05, ndt=10):
@@ -144,7 +144,7 @@ def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, L, lp, offset,
     return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
 
 
-def recolor_burstsph_OU_gauss_R(timestamps, *, R0, R_mean, R_sigma,
+def recolor_burstsph_OU_gauss_R(timestamps, *, R0, R_mean, R_sigma, gamma,
                                 τ_relax, τ_D, τ_A, δt, k_s=None, rg=None,
                                 chunk_size=1000, α=0.05, ndt=10, cdf=True):
     """Recolor burst photons with Ornstein–Uhlenbeck D-A distance diffusion.
