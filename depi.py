@@ -80,9 +80,10 @@ def _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph):
     return burstsph_sim
 
 
-def recolor_burstsph(timestamps, R0, τ_relax, τ_D, τ_A, δt, gamma=1.0,
-                     k_s=None, rg=None, chunk_size=1000, α=0.05, ndt=10,
-                     **dd_model):
+def recolor_burstsph(
+        timestamps, R0, τ_relax, τ_D, τ_A, δt, gamma=1.0, D_fract=1.,
+        k_s=None, rg=None, chunk_size=1000, α=0.05, ndt=10,
+        **dd_model):
     name = dd_model.pop('name').lower()
     if name.startswith('gauss'):
         func = recolor_burstsph_OU_gauss_R
@@ -90,19 +91,20 @@ def recolor_burstsph(timestamps, R0, τ_relax, τ_D, τ_A, δt, gamma=1.0,
         func = recolor_burstsph_OU_WLC
     else:
         raise ValueError(f'Distance model "{name}" not recognized.')
-    return func(timestamps, R0=R0, τ_relax=τ_relax, τ_D=τ_D, τ_A=τ_A, δt=δt,
-                k_s=k_s, gamma=gamma, rg=rg, chunk_size=chunk_size, α=α,
-                ndt=ndt, **dd_model)
+    return func(
+        timestamps, R0=R0, τ_relax=τ_relax, τ_D=τ_D, D_fract=D_fract,
+        τ_A=τ_A, δt=δt, k_s=k_s, gamma=gamma, rg=rg, chunk_size=chunk_size,
+        α=α, ndt=ndt, **dd_model)
 
 
-def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, gamma, L, lp, offset,
-                            τ_D, τ_A, δt, du, u_max, dr,
-                            k_s=None, rg=None, chunk_size=1000,
-                            α=0.05, ndt=10):
+def recolor_burstsph_OU_WLC(
+        timestamps, *, R0, τ_relax, gamma, L, lp, offset, τ_D, τ_A, δt,
+        du, u_max, dr, D_fract, k_s=None, rg=None,
+        chunk_size=1000, α=0.05, ndt=10):
     _check_args(τ_relax, ndt, α)
+    k_D, D_fract = _get_D_lifetime_components(τ_D, D_fract)
     if rg is None:
         rg = np.random.RandomState()
-    k_D = 1 / τ_D
     ts = timestamps.values
     # Use the size of L to infer the number of states
     num_states = np.size(L)
@@ -115,7 +117,7 @@ def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, gamma, L, lp, offset,
             du=du, u_max=u_max, dr=dr, L=p['L'], lp=p['lp'],
             offset=p['offset'])
         A_em, R_ph, T_ph = func(
-            ts, δt, k_D, R0, p['τ_relax'], r_wlc, idx_offset_wlc, du,
+            ts, δt, k_D, D_fract, R0, p['τ_relax'], r_wlc, idx_offset_wlc, du,
             gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     else:
         print(f'WLC func: num_states {num_states}', flush=True)
@@ -143,9 +145,10 @@ def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, gamma, L, lp, offset,
     return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
 
 
-def recolor_burstsph_OU_gauss_R(timestamps, *, R0, R_mean, R_sigma, gamma,
-                                τ_relax, τ_D, τ_A, δt, k_s=None, rg=None,
-                                chunk_size=1000, α=0.05, ndt=10, cdf=True):
+def recolor_burstsph_OU_gauss_R(
+        timestamps, *, R0, R_mean, R_sigma, gamma, τ_relax, τ_D, τ_A, δt,
+        D_fract=1., k_s=None, rg=None, chunk_size=1000, α=0.05, ndt=10,
+        cdf=True):
     """Recolor burst photons with Ornstein–Uhlenbeck D-A distance diffusion.
 
     Simulate Gaussian-distributed D-A distances diffusing according
@@ -203,7 +206,7 @@ def recolor_burstsph_OU_gauss_R(timestamps, *, R0, R_mean, R_sigma, gamma,
     if rg is None:
         rg = np.random.RandomState()
     _check_args(τ_relax, ndt, α)
-    k_D = 1 / τ_D
+    k_D, D_fract = _get_D_lifetime_components(τ_D, D_fract)
     ts = timestamps.values
     # Use the size of R_mean to infer the number of states
     num_states = np.size(R_mean)
@@ -216,7 +219,7 @@ def recolor_burstsph_OU_gauss_R(timestamps, *, R0, R_mean, R_sigma, gamma,
         p = dict(R_mean=R_mean, R_sigma=R_sigma, τ_relax=τ_relax)
         p = {k: v if np.isscalar(v) else v[0] for k, v in p.items()}
         A_em, R_ph, T_ph = func(
-            ts, δt, k_D, R0, p['R_mean'], p['R_sigma'], p['τ_relax'],
+            ts, δt, k_D, D_fract, R0, p['R_mean'], p['R_sigma'], p['τ_relax'],
             gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     else:
         # Check that all parameters have length equal to num_states
@@ -235,6 +238,21 @@ def recolor_burstsph_OU_gauss_R(timestamps, *, R0, R_mean, R_sigma, gamma,
     # Add exponentially distributed lifetimes to A nanotimes
     T_ph[A_mask] += rg.exponential(scale=τ_A, size=A_mask.sum())
     return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
+
+
+def _get_D_lifetime_components(τ_D, D_fract):
+    k_D = 1 / np.atleast_1d(τ_D)
+    num_D_states = k_D.size
+    if num_D_states > 1 and D_fract is None:
+        msg = ('When there is more than one D lifetime component, '
+               'you need to specify the parameter `D_fract`.')
+        raise ValueError(msg)
+    D_fract = np.atleast_1d(D_fract).astype('float')
+    if D_fract.size != num_D_states:
+        msg = (f'Arrays `D_fract` (size {D_fract.size}) and k_D '
+               f'(size {num_D_states}) need to have the same size.')
+        raise ValueError(msg)
+    return k_D, D_fract
 
 
 def _check_params_nstates(p, k_s, num_states, func_2state, func_nstate):

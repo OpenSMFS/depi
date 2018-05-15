@@ -56,16 +56,18 @@ cdef inline double ou_single_step_cy0(double x0, double delta_t, double N,
 @cython.wraparound(False)
 @cython.cdivision(True)
 def sim_DA_from_timestamps2_p2_cy(
-        np.int64_t[:] timestamps, double dt, double k_D, double R0,
+        np.int64_t[:] timestamps, double dt, double[:] K_D, double[:] D_fract,
+        double R0,
         double R_mean, double R_sigma, double tau_relax,
         *, double gamma=1.0, rg=np.random.RandomState(),
         int chunk_size=1000, double alpha=0.05, double ndt=10):
     cdef double R_ou = rg.randn() * R_sigma
     cdef double R, R_prev, delta_t, nanotime, k_ET, d_prob_ph_em, k_emission
     cdef double p, N
-    cdef np.int64_t t, t0
-    cdef double p_DA, prob_A_em
-    cdef Py_ssize_t iph, iN
+    cdef np.int64_t t, t0, num_D_lifetimes = len(K_D)
+    cdef double p_DA, prob_A_em, k_D
+    cdef Py_ssize_t iph, iN, iD_comp
+    cdef Py_ssize_t[:] D_comps = np.arange(num_D_lifetimes, dtype='int64')
     # Generate random number in chunks for efficiency
     cdef np.float64_t[:] Na, Pa
     # Array flagging photons as A (1) or D (0) emitted
@@ -78,6 +80,8 @@ def sim_DA_from_timestamps2_p2_cy(
         dt = tau_relax / ndt
         print(f'WARNING: Reducing dt to {dt:g} '
               f'[tau_relax = {tau_relax}]')
+    if num_D_lifetimes == 1:
+        k_D = K_D[0]
     iN = chunk_size - 1  # value to get the first chunk of random numbers
     t0 = 0
     nanotime = 0
@@ -97,6 +101,9 @@ def sim_DA_from_timestamps2_p2_cy(
             iN = 0
         N = Na[iN]
         p = Pa[iN]
+        if num_D_lifetimes > 1:
+            iD_comp = rg.choice(D_comps, size=1, p=D_fract)[0]
+            k_D = K_D[iD_comp]
         R_prev = R
         R_ou = ou_single_step_cy0(R_ou, delta_t, N, R_sigma, tau_relax)
         R = R_ou + R_mean
@@ -142,17 +149,18 @@ def sim_DA_from_timestamps2_p2_cy(
 @cython.wraparound(False)
 @cython.cdivision(True)
 def sim_DA_from_timestamps2_p2_dist_cy(
-        np.int64_t[:] timestamps, double dt, double k_D, double R0,
-        double tau_relax,
+        np.int64_t[:] timestamps, double dt, double[:] K_D, double[:] D_fract,
+        double R0, double tau_relax,
         double[:] r_dd, Py_ssize_t idx_offset_dd, double du_norm,
         *, double gamma=1.0, rg=np.random.RandomState(),
         int chunk_size=1000, double alpha=0.05, double ndt=10):
     cdef double R_ou = rg.randn()
     cdef double R, delta_t, nanotime, k_ET, d_prob_ph_em, k_emission
     cdef double p, N
-    cdef np.int64_t t, t0
-    cdef double p_DA, prob_A_em
-    cdef Py_ssize_t iph, iN, ix
+    cdef np.int64_t t, t0, num_D_lifetimes = len(K_D)
+    cdef double p_DA, prob_A_em, k_D
+    cdef Py_ssize_t iph, iN, ix, iD_comp
+    cdef Py_ssize_t[:] D_comps = np.arange(num_D_lifetimes, dtype='int64')
     # Generate random number in chunks for efficiency
     cdef np.float64_t[:] Na, Pa
     # Array flagging photons as A (1) or D (0) emitted
@@ -165,6 +173,8 @@ def sim_DA_from_timestamps2_p2_dist_cy(
         dt = tau_relax / ndt
         print(f'WARNING: Reducing dt to {dt:g} '
               f'[tau_relax = {tau_relax}]')
+    if num_D_lifetimes == 1:
+        k_D = K_D[0]
     iN = chunk_size - 1  # value to get the first chunk of random numbers
     t0 = 0
     nanotime = 0
@@ -184,6 +194,9 @@ def sim_DA_from_timestamps2_p2_dist_cy(
             iN = 0
         N = Na[iN]
         p = Pa[iN]
+        if num_D_lifetimes > 1:
+            iD_comp = rg.choice(D_comps, size=1, p=D_fract)[0]
+            k_D = K_D[iD_comp]
         R_ou = ou_single_step_cy0(R_ou, delta_t, N, 1, tau_relax)
         ix = int(round(R_ou / du_norm)) + idx_offset_dd
         R = r_dd[ix]
