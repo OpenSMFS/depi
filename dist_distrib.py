@@ -1,5 +1,14 @@
 import numpy as np
 
+valid_model_names = ('gaussian', 'wlc', 'radial_gaussian')
+
+
+def assert_valid_model_name(name):
+    name = name.lower()
+    if name not in valid_model_names:
+        raise TypeError(f'Distance model name "{name}" not recognized.'
+                        f'Valid model names are:\n {valid_model_names})')
+
 
 def gaussian(r, mu=0, sig=1):
     u = (r - mu) / sig

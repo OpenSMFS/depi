@@ -34,6 +34,7 @@ def plot_R_distrib(params, ax=None):
     if ax is None:
         _, ax = plt.subplots()
     name = params.copy().pop('name').lower()
+    dd.assert_valid_model_name(name)
     if name.startswith('gauss'):
         print('Gaussian model', flush=True)
         func = plot_R_distrib_gauss
@@ -44,7 +45,7 @@ def plot_R_distrib(params, ax=None):
         print('Radial Gaussian model', flush=True)
         func = plot_R_distrib_rad_gauss
     else:
-        raise ValueError(f'Distance model "{name}" not recognized.')
+        raise NotImplementedError(f'Distance model "{name}" not implemented.')
     ax = func(params, ax)
     ax.axvline(params['R0'], color='r', ls='--')
     return ax
