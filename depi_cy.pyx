@@ -523,10 +523,12 @@ def sim_DA_from_timestamps2_p2_Nstates_dist_cy(
             delta_t = 0
             t = t0
         # Select the new state
-        for i in range(num_states):
-            D[i,i] = eigenval[i] * t
-        P_t_matrix = (V @ D @ V_inv).real
-        p_states = state_vector @ P_t_matrix
+        p_states = ctmc.occupancy(
+            delta_t0, state_vector, K_s, eigenval, V, V_inv)
+        # for i in range(num_states):
+        #     D[i,i] = eigenval[i] * delta_t0
+        # P_t_matrix = (V @ D @ V_inv).real
+        # p_states = state_vector @ P_t_matrix
         u = rg.rand()
         for s in range(num_states):
             p_state = p_states[s]
@@ -671,10 +673,12 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(
             # the same macrotime
             delta_t = 0
             t = t0
-        for i in range(num_states):
-            D[i,i] = eigenval[i] * t
-        P_t_matrix = (V @ D @ V_inv).real
-        p_states = state_vector @ P_t_matrix
+        p_states = ctmc.occupancy(
+            delta_t0, state_vector, K_s, eigenval, V, V_inv)
+        # for i in range(num_states):
+        #     D[i,i] = eigenval[i] * delta_t0
+        # P_t_matrix = (V @ D @ V_inv).real
+        # p_states = state_vector @ P_t_matrix
         u = rg.rand()
         for s in range(num_states):
             p_state = p_states[s]
@@ -804,7 +808,7 @@ def sim_DA_from_timestamps2_p2_Nstates_cym(
             delta_t = 0
             t = t0
         for i in range(num_states):
-            D[i,i] = eigenval[i] * t
+            D[i,i] = eigenval[i] * delta_t0
 
         matmul(D, V_inv, P_t_matrix, num_states)
         matmul(V, P_t_matrix, P_t_matrix, num_states)
