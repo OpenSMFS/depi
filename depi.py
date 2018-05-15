@@ -114,10 +114,9 @@ def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, gamma, L, lp, offset,
         r_wlc, idx_offset_wlc = dd.get_r_wlc(
             du=du, u_max=u_max, dr=dr, L=p['L'], lp=p['lp'],
             offset=p['offset'])
-        A_em, R_ph, T_ph = func(ts, δt, k_D, R0, p['τ_relax'],
-                                r_wlc, idx_offset_wlc, du,
-                                rg=rg, chunk_size=chunk_size,
-                                alpha=α, ndt=ndt)
+        A_em, R_ph, T_ph = func(
+            ts, δt, k_D, R0, p['τ_relax'], r_wlc, idx_offset_wlc, du,
+            gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     else:
         print(f'WLC func: num_states {num_states}', flush=True)
         # Check that state parameters have length equal to num_states
@@ -136,7 +135,7 @@ def recolor_burstsph_OU_WLC(timestamps, *, R0, τ_relax, gamma, L, lp, offset,
         idx_offset_dd = np.array(idx_offset_wlc_list, dtype='int64')
         A_em, R_ph, T_ph, S_ph = func(
             ts, δt, k_D, R0, np.asarray(τ_relax), k_s, r_dd, idx_offset_dd, du,
-            rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
+            gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     A_mask = A_em.view(bool)
     T_ph = np.asarray(T_ph)
     # Add exponentially distributed lifetimes to A nanotimes
@@ -216,9 +215,9 @@ def recolor_burstsph_OU_gauss_R(timestamps, *, R0, R_mean, R_sigma, gamma,
             func = depi_cy.sim_DA_from_timestamps2_p_cy
         p = dict(R_mean=R_mean, R_sigma=R_sigma, τ_relax=τ_relax)
         p = {k: v if np.isscalar(v) else v[0] for k, v in p.items()}
-        A_em, R_ph, T_ph = func(ts, δt, k_D, R0, p['R_mean'], p['R_sigma'],
-                                p['τ_relax'], rg=rg, chunk_size=chunk_size,
-                                alpha=α, ndt=ndt)
+        A_em, R_ph, T_ph = func(
+            ts, δt, k_D, R0, p['R_mean'], p['R_sigma'], p['τ_relax'],
+            gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     else:
         # Check that all parameters have length equal to num_states
         p = dict(R_mean=R_mean, R_sigma=R_sigma, τ_relax=τ_relax)
@@ -230,7 +229,7 @@ def recolor_burstsph_OU_gauss_R(timestamps, *, R0, R_mean, R_sigma, gamma,
                   np.asarray(τ_relax), np.asarray(k_s))
         A_em, R_ph, T_ph, S_ph = func(
             ts, δt, k_D, R0, *params,
-            rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
+            gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     A_mask = A_em.view(bool)
     T_ph = np.asarray(T_ph)
     # Add exponentially distributed lifetimes to A nanotimes
