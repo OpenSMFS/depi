@@ -40,10 +40,35 @@ def plot_R_distrib(params, ax=None):
     elif name.startswith('wlc'):
         print('WLC model', flush=True)
         func = plot_R_distrib_wlc
+    elif name.startswith('radial_gaussian'):
+        print('Radial Gaussian model', flush=True)
+        func = plot_R_distrib_rad_gauss
     else:
         raise ValueError(f'Distance model "{name}" not recognized.')
     ax = func(params, ax)
     ax.axvline(params['R0'], color='r', ls='--')
+    return ax
+
+
+def plot_R_distrib_rad_gauss(params, ax):
+    mu, sig = params['mu'], params['sig']
+    s = sig**2 * (3 * np.pi - 8) / np.pi
+    num_states = np.size(sig)
+    if num_states == 1:
+        r = np.arange(0, mu + 5 * s, s / 20)
+        y = dd.radial_gaussian(r, mu, sig)
+    else:
+        k_s = np.array(params['k_s'])
+        if k_s.ndim == 1:
+            fract = np.array([k_s[1] / (k_s.sum()), k_s[0] / (k_s.sum())])
+        else:
+            fract = ctmc.CT_stationary_distribution(np.asarray(params['k_s']))
+        r = np.arange(0, np.max(mu) + 5 * np.max(s),
+                      np.min(s) / 20)
+        y = np.zeros_like(r)
+        for i in range(num_states):
+            y += fract[i] * dd.radial_gaussian(r, mu[i], sig[i])
+    ax.plot(r, y, 'k')
     return ax
 
 

@@ -80,21 +80,123 @@ def _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph):
     return burstsph_sim
 
 
+def _get_num_states(dd_params):
+    for k, v in dd_params.items():
+        if k != 'name':
+            num_states = np.size(v)
+            break
+    return num_states
+
+
+def _check_dd_params(dd_params, τ_relax):
+    num_states = _get_num_states(dd_params)
+    p = {'τ_relax': τ_relax, **dd_params}
+    for k, v in p.items():
+        if k == 'name' or k == 'k_s':
+            continue
+        if num_states == 1 and not np.isscalar(v):
+            msg = f'Parameter `{k}` ({v}) must be scalar when we have 1 state'
+            raise TypeError(msg)
+        elif num_states > 1 and np.size(v) != num_states:
+            msg = (f'Parameter `{k}` ({v}) must have the same '
+                   f'size as the number of states ({num_states}).')
+            raise TypeError(msg)
+    return num_states
+
+
+def _check_params_nstates(k_s, num_states, func_2state, func_nstate):
+    k_s = np.asarray(k_s)
+    if k_s.ndim == 1:
+        if num_states != 2:
+            msg = f'"k_s" (={k_s}) should an {num_states}x{num_states} array.'
+            raise TypeError(msg)
+        if np.size(k_s) != 2:
+            msg = f'"k_s" (={k_s}) should be a 2-element 1d array or an 2x2 array.'
+            raise TypeError(msg)
+        func = func_2state
+    else:
+        if k_s.shape != (num_states, num_states):
+            msg = f'"k_s" (={k_s}) should be an {num_states}x{num_states} array.'
+            raise TypeError(msg)
+        func = func_nstate
+    return k_s, func
+
+
 def recolor_burstsph(
         timestamps, R0, τ_relax, τ_D, τ_A, δt, gamma=1.0, D_fract=1.,
         k_s=None, rg=None, chunk_size=1000, α=0.05, ndt=10,
         **dd_model):
-    name = dd_model.pop('name').lower()
+    name = dd_model['name'].lower()
     if name.startswith('gauss'):
-        func = recolor_burstsph_OU_gauss_R
-    elif name.startswith('wlc'):
-        func = recolor_burstsph_OU_WLC
+        del dd_model['name']
+        return recolor_burstsph_OU_gauss_R(
+            timestamps, R0=R0, τ_relax=τ_relax, τ_D=τ_D, D_fract=D_fract,
+            τ_A=τ_A, δt=δt, k_s=k_s, gamma=gamma, rg=rg, chunk_size=chunk_size,
+            α=α, ndt=ndt, **dd_model)
     else:
-        raise ValueError(f'Distance model "{name}" not recognized.')
-    return func(
-        timestamps, R0=R0, τ_relax=τ_relax, τ_D=τ_D, D_fract=D_fract,
-        τ_A=τ_A, δt=δt, k_s=k_s, gamma=gamma, rg=rg, chunk_size=chunk_size,
-        α=α, ndt=ndt, **dd_model)
+        if name.lower() not in ('wlc', 'radial_gaussian'):
+            raise TypeError(f'Distance model name "{name}" not recognized.')
+        return recolor_burstsph_OU_dist_distrib(
+            timestamps, R0=R0, τ_relax=τ_relax, τ_D=τ_D, D_fract=D_fract,
+            τ_A=τ_A, δt=δt, k_s=k_s, gamma=gamma, rg=rg, chunk_size=chunk_size,
+            α=α, ndt=ndt, dd_params=dd_model)
+
+
+def recolor_burstsph_OU_dist_distrib(
+        timestamps, *, R0, τ_relax, gamma, dd_params, τ_D, τ_A, δt,
+        D_fract, k_s=None, rg=None,
+        chunk_size=1000, α=0.05, ndt=10):
+    _check_args(τ_relax, ndt, α)
+    k_D, D_fract = _get_D_lifetime_components(τ_D, D_fract)
+    if rg is None:
+        rg = np.random.RandomState()
+    ts = timestamps.values
+    # Extract the fixed parameters that do not depend on the number of states
+    dd_params = dd_params.copy()
+    du = dd_params.pop('du')
+    u_max = dd_params.pop('u_max')
+    dr = dd_params.pop('dr')
+    # Compute number of states
+    num_states = _check_dd_params(dd_params, τ_relax)
+    if num_states == 1:
+        S_ph = None
+        p = {k: v if np.isscalar(v) else v[0]
+             for k, v in {'τ_relax': τ_relax, **dd_params}.items()}
+        # Compute R-axis for the 1-state distance distribution
+        r_dd, idx_offset_dd = dd.get_r_dist_distrib(
+            du=du, u_max=u_max, dr=dr, dd_params=dd_params)
+        # Run the 1-state recoloring simulation
+        A_em, R_ph, T_ph = depi_cy.sim_DA_from_timestamps2_p2_dist_cy(
+            ts, δt, k_D, D_fract, R0, p['τ_relax'], r_dd, idx_offset_dd, du,
+            gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
+    else:
+        print(f'{dd_params["name"]} func: num_states {num_states}', flush=True)
+        print(dd_params)
+        # Check that state parameters have length equal to num_states
+        k_s, func = _check_params_nstates(
+            k_s, num_states,
+            func_2state=depi_cy.sim_DA_from_timestamps2_p2_2states_dist_cy,
+            func_nstate=depi_cy.sim_DA_from_timestamps2_p2_Nstates_dist_cy)
+        # Compute R-axis for the multi-state distance distribution
+        r_dd_list, idx_offset_list = [], []
+        for i in range(num_states):
+            dd_params_i = {k: v[i] for k, v in dd_params.items() if k != 'name'}
+            dd_params_i['name'] = dd_params['name']
+            r_dd, idx_offset = dd.get_r_dist_distrib(
+                du=du, u_max=u_max, dr=dr, dd_params=dd_params_i)
+            r_dd_list.append(r_dd)
+            idx_offset_list.append(idx_offset)
+        r_dd = np.vstack(r_dd_list)
+        idx_offset_dd = np.array(idx_offset_list, dtype='int64')
+        # Run the multi-state recoloring simulation
+        A_em, R_ph, T_ph, S_ph = func(
+            ts, δt, k_D, R0, np.asarray(τ_relax), k_s, r_dd, idx_offset_dd, du,
+            gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
+    A_mask = A_em.view(bool)
+    T_ph = np.asarray(T_ph)
+    # Add exponentially distributed lifetimes to A nanotimes
+    T_ph[A_mask] += rg.exponential(scale=τ_A, size=A_mask.sum())
+    return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
 
 
 def recolor_burstsph_OU_WLC(
@@ -196,7 +298,7 @@ def recolor_burstsph_OU_gauss_R(
         cdf (bool): if True use a fixed `dt` and the exponential CDF to
             compute the D de-excitatation probability in the current time bin.
             If False, use the approximation `p = k_emission * dt`, with `dt`
-            adaptively choosen so that `p <= α`.
+            adaptively chosen so that `p <= α`.
 
     Returns:
         burstsph (pandas.DataFrame): DataFrame with 3 columns: 'timestamp'
@@ -225,7 +327,7 @@ def recolor_burstsph_OU_gauss_R(
         # Check that all parameters have length equal to num_states
         p = dict(R_mean=R_mean, R_sigma=R_sigma, τ_relax=τ_relax)
         k_s, func = _check_params_nstates(
-            p, k_s, num_states,
+            k_s, num_states,
             func_2state=depi_cy.sim_DA_from_timestamps2_p2_2states_cy,
             func_nstate=depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy)
         params = (np.asarray(R_mean), np.asarray(R_sigma),
@@ -253,24 +355,6 @@ def _get_D_lifetime_components(τ_D, D_fract):
                f'(size {num_D_states}) need to have the same size.')
         raise ValueError(msg)
     return k_D, D_fract
-
-
-def _check_params_nstates(p, k_s, num_states, func_2state, func_nstate):
-    for name, val in p.items():
-        m = f'Argument "{name}" (={val}) should be of length {num_states}.'
-        assert np.size(val) == num_states, m
-    k_s = np.asarray(k_s)
-    if k_s.ndim == 1:
-        m = f'"k_s" (={k_s}) should an {num_states}x{num_states} array.'
-        assert num_states == 2, m
-        m = f'"k_s" (={k_s}) should be a 2-element 1d array or an 2x2 array.'
-        assert np.size(k_s) == 2, m
-        func = func_2state
-    else:
-        m = f'"k_s" (={k_s}) should be an {num_states}x{num_states} array.'
-        assert k_s.ndim == 2 and k_s.shape[0] == k_s.shape[1], m
-        func = func_nstate
-    return k_s, func
 
 
 #
