@@ -110,7 +110,7 @@ def get_r_dist_distrib(du, u_max, dr, dd_params):
     # PDF and CDF of the new distance distribution
     r, dd_pdf = _get_dd_pdf(dr, dd_params)
     dd_cdf = np.cumsum(dd_pdf) * dr
-    assert dd_cdf[-1] <= 1, 'CDF is larger than 1!'
+    assert dd_cdf[-1] <= 1 + 1e-10, 'CDF is larger than 1!'
     assert 1 - dd_cdf[-1] < 1e-3, 'CDF axis range too small. '
     # Build the R-axis at positions matching the normal CDF values
     r_dist = np.interp(norm_cdf, dd_cdf, r)
