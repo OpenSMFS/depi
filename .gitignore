@@ -6,3 +6,7 @@ build*
 *.png
 *.so
 photonHDF5*
+*.c
+*.html
+results
+*.ipynb

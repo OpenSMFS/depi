@@ -242,8 +242,8 @@ def sim_DA_from_timestamps2_p2_dist_cy(
 @cython.wraparound(False)
 @cython.cdivision(True)
 def sim_DA_from_timestamps2_p2_2states_cy(
-        np.int64_t[:] timestamps, double dt_ref, double k_D, double R0,
-        double[:] R_mean, double[:] R_sigma,
+        np.int64_t[:] timestamps, double dt_ref, double[:] K_D, double[:] D_fract,
+        double R0, double[:] R_mean, double[:] R_sigma,
         double[:] tau_relax, double[:] k_s,
         *, double gamma=1.0, rg=np.random.RandomState(),
         int chunk_size=1000, double alpha=0.05, double ndt=10):
@@ -252,9 +252,10 @@ def sim_DA_from_timestamps2_p2_2states_cy(
     cdef double R, R_prev, delta_t, delta_t0, nanotime, k_ET, d_prob_ph_em, k_emission
     cdef double k_s_sum, p, N, p_state, u
     #cdef double R_mean_i, R_sigma_i, tau_relax_i, dt_i
-    cdef np.int64_t t, t0
-    cdef double p_DA, prob_A_em
-    cdef Py_ssize_t iph, iN
+    cdef np.int64_t t, t0, num_D_lifetimes = len(K_D)
+    cdef double p_DA, prob_A_em, k_D
+    cdef Py_ssize_t iph, iN, iD_comp
+    cdef Py_ssize_t[:] D_comps = np.arange(num_D_lifetimes, dtype='int64')
     cdef np.uint8_t state = 0
     cdef np.float64_t[:] peq = np.zeros(2, dtype=np.float64)
     # Generate random number in chunks for efficiency
@@ -272,6 +273,8 @@ def sim_DA_from_timestamps2_p2_2states_cy(
             dt[state] = tau_relax[state] / ndt
             print(f'WARNING: Reducing dt[{state}] to {dt[state]:g} '
                   f'[tau_relax[{state}] = {tau_relax[state]}]')
+    if num_D_lifetimes == 1:
+        k_D = K_D[0]
     k_s_sum = np.sum(k_s)
     peq[0] = k_s[1] / (k_s[0] + k_s[1])
     peq[1] = k_s[0] / (k_s[0] + k_s[1])
@@ -311,6 +314,9 @@ def sim_DA_from_timestamps2_p2_2states_cy(
             iN = 0
         N = Na[iN]
         p = Pa[iN]
+        if num_D_lifetimes > 1:
+            iD_comp = rg.choice(D_comps, size=1, p=D_fract)[0]
+            k_D = K_D[iD_comp]
         R_ou = ou_single_step_cy0(R_ou, delta_t, N, R_sigma[state], tau_relax[state])
         R = R_ou + R_mean[state]
         nanotime = 0
@@ -356,8 +362,8 @@ def sim_DA_from_timestamps2_p2_2states_cy(
 @cython.wraparound(False)
 @cython.cdivision(True)
 def sim_DA_from_timestamps2_p2_2states_dist_cy(
-        np.int64_t[:] timestamps, double dt_ref, double k_D, double R0,
-        double[:] tau_relax, double[:] k_s,
+        np.int64_t[:] timestamps, double dt_ref, double[:] K_D, double[:] D_fract,
+        double R0, double[:] tau_relax, double[:] k_s,
         double[:,:] r_dd, Py_ssize_t[:] idx_offset_dd, double du_norm,
         *, double gamma=1.0, rg=np.random.RandomState(),
         int chunk_size=1000, double alpha=0.05, double ndt=10):
@@ -365,9 +371,10 @@ def sim_DA_from_timestamps2_p2_2states_dist_cy(
     cdef double R_ou
     cdef double R, R_prev, delta_t, delta_t0, nanotime, k_ET, d_prob_ph_em, k_emission
     cdef double k_s_sum, p, N, p_state, u
-    cdef np.int64_t t, t0
-    cdef double p_DA, prob_A_em
-    cdef Py_ssize_t iph, iN, ix
+    cdef np.int64_t t, t0, num_D_lifetimes = len(K_D)
+    cdef double p_DA, prob_A_em, k_D
+    cdef Py_ssize_t iph, iN, ix, iD_comp
+    cdef Py_ssize_t[:] D_comps = np.arange(num_D_lifetimes, dtype='int64')
     cdef np.uint8_t state = 0
     cdef np.float64_t[:] peq = np.zeros(2, dtype=np.float64)
     # Generate random number in chunks for efficiency
@@ -385,6 +392,8 @@ def sim_DA_from_timestamps2_p2_2states_dist_cy(
             dt[state] = tau_relax[state] / ndt
             print(f'WARNING: Reducing dt[{state}] to {dt[state]:g} '
                   f'[tau_relax[{state}] = {tau_relax[state]}]')
+    if num_D_lifetimes == 1:
+        k_D = K_D[0]
     k_s_sum = np.sum(k_s)
     peq[0] = k_s[1] / (k_s[0] + k_s[1])
     peq[1] = k_s[0] / (k_s[0] + k_s[1])
@@ -420,6 +429,9 @@ def sim_DA_from_timestamps2_p2_2states_dist_cy(
             iN = 0
         N = Na[iN]
         p = Pa[iN]
+        if num_D_lifetimes > 1:
+            iD_comp = rg.choice(D_comps, size=1, p=D_fract)[0]
+            k_D = K_D[iD_comp]
         R_ou = ou_single_step_cy0(R_ou, delta_t, N, 1, tau_relax[state])
         ix = int(round(R_ou / du_norm)) + idx_offset_dd[state]
         R = r_dd[state, ix]
@@ -466,8 +478,8 @@ def sim_DA_from_timestamps2_p2_2states_dist_cy(
 @cython.wraparound(False)
 @cython.cdivision(True)
 def sim_DA_from_timestamps2_p2_Nstates_dist_cy(
-        np.int64_t[:] timestamps, double dt_ref, double k_D, double R0,
-        double[:] tau_relax, double[:,:] K_s,
+        np.int64_t[:] timestamps, double dt_ref, double[:] K_D, double[:] D_fract,
+        double R0, double[:] tau_relax, double[:,:] K_s,
         double[:,:] r_dd, Py_ssize_t[:] idx_offset_dd, double du_norm,
         *, double gamma=1.0, rg=np.random.RandomState(),
         int chunk_size=1000, double alpha=0.05, double ndt=10):
@@ -475,9 +487,10 @@ def sim_DA_from_timestamps2_p2_Nstates_dist_cy(
     cdef double R_ou
     cdef double R, R_prev, delta_t, delta_t0, nanotime, k_ET, d_prob_ph_em, k_emission
     cdef double p, N, p_state, u
-    cdef np.int64_t t, t0
-    cdef double p_DA, prob_A_em
-    cdef Py_ssize_t iph, iN, s, i, ix
+    cdef np.int64_t t, t0, num_D_lifetimes = len(K_D)
+    cdef double p_DA, prob_A_em, k_D
+    cdef Py_ssize_t iph, iN, s, i, ix, iD_comp
+    cdef Py_ssize_t[:] D_comps = np.arange(num_D_lifetimes, dtype='int64')
     cdef Py_ssize_t state, newstate
     # Generate random number in chunks for efficiency
     cdef np.float64_t[:] Na, Pa
@@ -500,6 +513,8 @@ def sim_DA_from_timestamps2_p2_Nstates_dist_cy(
             dt[state] = tau_relax[state] / ndt
             print(f'WARNING: Reducing dt[{state}] to {dt[state]:g} '
                   f'[tau_relax[{state}] = {tau_relax[state]}]')
+    if num_D_lifetimes == 1:
+        k_D = K_D[0]
     state = 0
     newstate = 0
     state_vector = np.zeros(num_states)
@@ -549,6 +564,9 @@ def sim_DA_from_timestamps2_p2_Nstates_dist_cy(
             iN = 0
         N = Na[iN]
         p = Pa[iN]
+        if num_D_lifetimes > 1:
+            iD_comp = rg.choice(D_comps, size=1, p=D_fract)[0]
+            k_D = K_D[iD_comp]
         R_ou = ou_single_step_cy0(R_ou, delta_t, N, 1, tau_relax[state])
         ix = int(round(R_ou / du_norm)) + idx_offset_dd[state]
         R = r_dd[state, ix]
@@ -615,8 +633,8 @@ def _state_sel(R_ou, num_states, state, t, eigenval, V, V_inv, D, P_t_matrix,
 @cython.wraparound(False)
 @cython.cdivision(True)
 def sim_DA_from_timestamps2_p2_Nstates_cy(
-        np.int64_t[:] timestamps, double dt_ref, double k_D, double R0,
-        double[:] R_mean, double[:] R_sigma,
+        np.int64_t[:] timestamps, double dt_ref, double[:] K_D, double[:] D_fract,
+        double R0, double[:] R_mean, double[:] R_sigma,
         double[:] tau_relax, double[:,:] K_s,
         *, double gamma=1.0, rg=np.random.RandomState(),
         int chunk_size=1000, double alpha=0.05, double ndt=10):
@@ -625,9 +643,10 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(
     cdef double R, R_prev, delta_t, delta_t0, nanotime, k_ET, d_prob_ph_em, k_emission
     #cdef double R_mean_i, R_sigma_i, tau_relax_i, dt_i
     cdef double p, N, p_state, u
-    cdef np.int64_t t, t0
-    cdef double p_DA, prob_A_em
-    cdef Py_ssize_t iph, iN, s, i
+    cdef np.int64_t t, t0, num_D_lifetimes = len(K_D)
+    cdef double p_DA, prob_A_em, k_D
+    cdef Py_ssize_t iph, iN, s, i, iD_comp
+    cdef Py_ssize_t[:] D_comps = np.arange(num_D_lifetimes, dtype='int64')
     cdef Py_ssize_t state, newstate
     # Generate random number in chunks for efficiency
     cdef np.float64_t[:] Na, Pa
@@ -651,6 +670,8 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(
             dt[state] = tau_relax[state] / ndt
             print(f'WARNING: Reducing dt[{state}] to {dt[state]:g} '
                   f'[tau_relax[{state}] = {tau_relax[state]}]')
+    if num_D_lifetimes == 1:
+        k_D = K_D[0]
     state = 0
     newstate = 0
     state_vector = np.zeros(num_states)
@@ -704,6 +725,9 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(
             iN = 0
         N = Na[iN]
         p = Pa[iN]
+        if num_D_lifetimes > 1:
+            iD_comp = rg.choice(D_comps, size=1, p=D_fract)[0]
+            k_D = K_D[iD_comp]
         R_ou = ou_single_step_cy0(R_ou, delta_t, N, R_sigma[state], tau_relax[state])
         R = R_ou + R_mean[state]
         nanotime = 0
@@ -748,8 +772,8 @@ def sim_DA_from_timestamps2_p2_Nstates_cy(
 @cython.wraparound(False)
 @cython.cdivision(True)
 def sim_DA_from_timestamps2_p2_Nstates_cym(
-        np.int64_t[:] timestamps, double dt_ref, double k_D, double R0,
-        double[:] R_mean, double[:] R_sigma,
+        np.int64_t[:] timestamps, double dt_ref, double[:] K_D, double[:] D_fract,
+        double R0, double[:] R_mean, double[:] R_sigma,
         double[:] tau_relax, double[:,:] K_s,
         *, double gamma=1.0, rg=np.random.RandomState(),
         int chunk_size=1000, double alpha=0.05, double ndt=10):
@@ -758,9 +782,10 @@ def sim_DA_from_timestamps2_p2_Nstates_cym(
     cdef double R, R_prev, delta_t, delta_t0, nanotime, k_ET, d_prob_ph_em, k_emission
     #cdef double R_mean_i, R_sigma_i, tau_relax_i, dt_i
     cdef double p, N, p_state, u
-    cdef np.int64_t t, t0
-    cdef double p_DA, prob_A_em
-    cdef Py_ssize_t iph, iN, s, i
+    cdef np.int64_t t, t0, num_D_lifetimes = len(K_D)
+    cdef double p_DA, prob_A_em, k_D
+    cdef Py_ssize_t iph, iN, s, i, iD_comp
+    cdef Py_ssize_t[:] D_comps = np.arange(num_D_lifetimes, dtype='int64')
     cdef Py_ssize_t state, newstate
     # Generate random number in chunks for efficiency
     cdef np.float64_t[:] Na, Pa
@@ -785,6 +810,8 @@ def sim_DA_from_timestamps2_p2_Nstates_cym(
             dt[state] = tau_relax[state] / ndt
             print(f'WARNING: Reducing dt[{state}] to {dt[state]:g} '
                   f'[tau_relax[{state}] = {tau_relax[state]}]')
+    if num_D_lifetimes == 1:
+        k_D = K_D[0]
     state = 0
     newstate = 0
     state_vector = np.zeros(num_states)
@@ -840,6 +867,9 @@ def sim_DA_from_timestamps2_p2_Nstates_cym(
             iN = 0
         N = Na[iN]
         p = Pa[iN]
+        if num_D_lifetimes > 1:
+            iD_comp = rg.choice(D_comps, size=1, p=D_fract)[0]
+            k_D = K_D[iD_comp]
         R_ou = ou_single_step_cy0(R_ou, delta_t, N, R_sigma[state], tau_relax[state])
         R = R_ou + R_mean[state]
         nanotime = 0

@@ -207,7 +207,7 @@ def recolor_burstsph_OU_dist_distrib(
         idx_offset_dd = np.array(idx_offset_list, dtype='int64')
         # Run the multi-state recoloring simulation
         A_em, R_ph, T_ph, S_ph = func(
-            ts, δt, k_D, R0, np.asarray(τ_relax), k_s, r_dd, idx_offset_dd, du,
+            ts, δt, k_D, D_fract, R0, np.asarray(τ_relax), k_s, r_dd, idx_offset_dd, du,
             gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     T_ph = _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, A_fract, rg)
     return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
@@ -300,7 +300,7 @@ def recolor_burstsph_OU_gauss_R(
                   np.asarray(dd_params['R_sigma']),
                   np.asarray(τ_relax), np.asarray(k_s))
         A_em, R_ph, T_ph, S_ph = func(
-            ts, δt, k_D, R0, *params,
+            ts, δt, k_D, D_fract, R0, *params,
             gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     T_ph = _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, A_fract, rg)
     return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
