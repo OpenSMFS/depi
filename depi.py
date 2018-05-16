@@ -69,21 +69,24 @@ def _check_args(τ_relax, ndt, α):
         raise ValueError(f'α needs to be strictly positive. It is {α}.')
 
 
-def _get_D_lifetime_components(τ_D, D_fract):
-    """Check and type-convert params for D fluorescence lifetime components.
+def _get_multi_lifetime_components(τ_X, X_fract, label='D'):
+    """Check and type-convert params for D or A fluorescence lifetime components.
     """
-    k_D = 1 / np.atleast_1d(τ_D)
-    num_D_states = k_D.size
-    if num_D_states > 1 and D_fract is None:
-        msg = ('When there is more than one D lifetime component, '
+    k_X = 1 / np.atleast_1d(τ_X)
+    num_X_states = k_X.size
+    if num_X_states > 1 and X_fract is None:
+        msg = (f'When there is more than one {label} lifetime component, '
                'you need to specify the parameter `D_fract`.')
+        raise TypeError(msg)
+    X_fract = np.atleast_1d(X_fract).astype('float')
+    if X_fract.size != num_X_states:
+        msg = (f'Arrays `{label}_fract` ({X_fract}) and τ_{label} '
+               f'({τ_X}) need to have the same size.')
         raise ValueError(msg)
-    D_fract = np.atleast_1d(D_fract).astype('float')
-    if D_fract.size != num_D_states:
-        msg = (f'Arrays `D_fract` (size {D_fract.size}) and k_D '
-               f'(size {num_D_states}) need to have the same size.')
+    if not np.allclose(X_fract.sum(), 1, rtol=0, atol=1e-10):
+        msg = (f'{label}_fract must sum to 1. It sums to {X_fract.sum()} instead.')
         raise ValueError(msg)
-    return k_D, D_fract
+    return k_X, X_fract
 
 
 def _get_num_states(dd_params):
@@ -136,8 +139,8 @@ def _check_params_nstates(k_s, num_states, func_2state, func_nstate):
 
 
 def recolor_burstsph(
-        timestamps, R0, τ_relax, τ_D, τ_A, δt, gamma=1.0, D_fract=1.,
-        k_s=None, rg=None, chunk_size=1000, α=0.05, ndt=10,
+        timestamps, *, R0, τ_relax, δt, τ_D, τ_A, gamma=1.0, D_fract=1.,
+        A_fract=1., k_s=None, rg=None, chunk_size=1000, α=0.05, ndt=10,
         **dd_model):
     name = dd_model['name'].lower()
     dd.assert_valid_model_name(name)
@@ -148,18 +151,20 @@ def recolor_burstsph(
         # Any non-Gaussian distance distribution
         func = recolor_burstsph_OU_dist_distrib
     return func(
-        timestamps, R0=R0, τ_relax=τ_relax, τ_D=τ_D, D_fract=D_fract,
-        τ_A=τ_A, δt=δt, k_s=k_s, gamma=gamma, rg=rg, chunk_size=chunk_size,
-        α=α, ndt=ndt, dd_params=dd_model)
+        timestamps, R0=R0, gamma=gamma, τ_relax=τ_relax, δt=δt,
+        τ_D=τ_D, D_fract=D_fract, τ_A=τ_A, A_fract=A_fract, k_s=k_s,
+        rg=rg, chunk_size=chunk_size, α=α, ndt=ndt, dd_params=dd_model)
 
 
 def recolor_burstsph_OU_dist_distrib(
-        timestamps, *, R0, gamma, τ_relax, dd_params, τ_D, τ_A, δt,
-        D_fract=1., k_s=None, rg=None, chunk_size=1000, α=0.05, ndt=10):
+        timestamps, *, R0, gamma, τ_relax, dd_params, δt,
+        τ_D, τ_A, D_fract=1., A_fract=1., k_s=None,
+        rg=None, chunk_size=1000, α=0.05, ndt=10):
     """Recoloring simulation with non-Gaussian distance distribution.
     """
     _check_args(τ_relax, ndt, α)
-    k_D, D_fract = _get_D_lifetime_components(τ_D, D_fract)
+    k_D, D_fract = _get_multi_lifetime_components(τ_D, D_fract, 'D')
+    k_A, A_fract = _get_multi_lifetime_components(τ_A, A_fract, 'A')
     if rg is None:
         rg = np.random.RandomState()
     ts = timestamps.values
@@ -204,13 +209,13 @@ def recolor_burstsph_OU_dist_distrib(
         A_em, R_ph, T_ph, S_ph = func(
             ts, δt, k_D, R0, np.asarray(τ_relax), k_s, r_dd, idx_offset_dd, du,
             gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-    T_ph = _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, rg)
+    T_ph = _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, A_fract, rg)
     return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
 
 
 def recolor_burstsph_OU_gauss_R(
-        timestamps, *, R0, gamma, τ_relax, dd_params, τ_D, τ_A, δt,
-        D_fract=1., k_s=None,
+        timestamps, *, R0, gamma, τ_relax, dd_params, δt,
+        τ_D, τ_A, D_fract=1., A_fract=1., k_s=None,
         rg=None, chunk_size=1000, α=0.05, ndt=10, cdf=True):
     """Recolor burst photons with Ornstein–Uhlenbeck D-A distance diffusion.
 
@@ -269,7 +274,8 @@ def recolor_burstsph_OU_gauss_R(
     if rg is None:
         rg = np.random.RandomState()
     _check_args(τ_relax, ndt, α)
-    k_D, D_fract = _get_D_lifetime_components(τ_D, D_fract)
+    k_D, D_fract = _get_multi_lifetime_components(τ_D, D_fract, 'D')
+    k_A, A_fract = _get_multi_lifetime_components(τ_A, A_fract, 'A')
     ts = timestamps.values
     # Use the size of R_mean to infer the number of states
     #dd_params = dict(name='gauss', R_mean=R_mean, R_sigma=R_sigma)
@@ -296,15 +302,23 @@ def recolor_burstsph_OU_gauss_R(
         A_em, R_ph, T_ph, S_ph = func(
             ts, δt, k_D, R0, *params,
             gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-    T_ph = _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, rg)
+    T_ph = _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, A_fract, rg)
     return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
 
 
-def _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, rg):
+def _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, A_fract, rg):
     A_mask = A_em.view(bool)
     T_ph = np.asarray(T_ph)
-    # Add exponentially distributed lifetimes to A nanotimes
-    T_ph[A_mask] += rg.exponential(scale=τ_A, size=A_mask.sum())
+    if np.size(τ_A) == 1:
+        # Add exponentially distributed lifetimes to A nanotimes
+        T_ph[A_mask] += rg.exponential(scale=τ_A, size=A_mask.sum())
+    else:
+        num_A_comps = len(τ_A)
+        A_index = np.nonzero(A_mask)[0]
+        components = np.random.choice(num_A_comps, size=A_index.size, p=A_fract)
+        for i, τ_A_i in enumerate(τ_A):
+            comp_i = A_index[components == i]
+            T_ph[comp_i] += rg.exponential(scale=τ_A_i, size=comp_i.size)
     return T_ph
 
 
