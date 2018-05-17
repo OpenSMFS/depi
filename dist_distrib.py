@@ -1,6 +1,6 @@
 import numpy as np
 
-valid_model_names = ('gaussian', 'wlc', 'radial_gaussian')
+valid_model_names = ('gaussian', 'wlc', 'gaussian_chain')
 
 
 def assert_valid_model_name(name):
@@ -26,21 +26,22 @@ def wormlike_chain(r, L, lp, offset=0):
     return res
 
 
-def radial_gaussian(r, mu, sig):
+def gaussian_chain(r, R_sigma, offset=0):
     c = np.sqrt(2 / np.pi)
-    r0 = (r - mu)
+    r0 = (r - offset)
     valid = r0 > 0
     res = np.zeros_like(r)
     res[~valid] = 0
     r0_squared = r0[valid]**2
-    res[valid] = c * r0_squared * np.exp(-r0_squared / (2 * sig**2)) / sig**3
+    res[valid] = (c * r0_squared * np.exp(-r0_squared / (2 * R_sigma**2))
+                  / R_sigma**3)
     return res
 
 
-def _get_radial_gaussian_pdf(dr, mu, sig):
-    s = sig**2 * (3 * np.pi - 8) / np.pi
-    r = np.arange(dr, mu + 5 * s + dr, dr)
-    rg_pdf = radial_gaussian(r, mu=mu, sig=sig)
+def _get_gaussian_chain_pdf(dr, R_sigma, offset):
+    std_dev = R_sigma**2 * (3 * np.pi - 8) / np.pi
+    r = np.arange(dr, offset + 5 * std_dev + dr, dr)
+    rg_pdf = gaussian_chain(r, R_sigma=R_sigma, offset=offset)
     return r, rg_pdf
 
 
@@ -57,7 +58,7 @@ def _get_dd_pdf(dr, params):
     if name.lower().startswith('wlc'):
         return _get_wlc_pdf(dr, **params)
     elif name.lower().startswith('radial_gauss'):
-        return _get_radial_gaussian_pdf(dr, **params)
+        return _get_gaussian_chain_pdf(dr, **params)
     else:
         raise TypeError(f'Distribution name `{name}` not recognized.')
 
