@@ -4,9 +4,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import seaborn as sns
+from IPython.display import display
 import depi
 import dist_distrib as dd
-import ctmc
 
 
 def mpl_text_1state(params, E_μ, show_τ_relax=True, space='nm', time='s'):
@@ -30,89 +30,15 @@ def plot_text_1state(ax, x, y, params, show_τ_relax=True, **text_kws):
     ax.text(x, y, text, **text_kws_used)
 
 
-def plot_R_distrib(params, ax=None):
+def plot_R_distrib(params, ax=None, dr=0.01, show_html=True):
     if ax is None:
         _, ax = plt.subplots()
-    name = params.copy().pop('name').lower()
-    dd.assert_valid_model_name(name)
-    if name.startswith('gauss'):
-        print('Gaussian model', flush=True)
-        func = plot_R_distrib_gauss
-    elif name.startswith('wlc'):
-        print('WLC model', flush=True)
-        func = plot_R_distrib_wlc
-    elif name.startswith('radial_gaussian'):
-        print('Radial Gaussian model', flush=True)
-        func = plot_R_distrib_rad_gauss
-    else:
-        raise NotImplementedError(f'Distance model "{name}" not implemented.')
-    ax = func(params, ax)
+    d = dd.distribution(params)
+    x, y = d.get_pdf(dr=dr)
+    if show_html:
+        display(d)
+    ax.plot(x, y, '-k')
     ax.axvline(params['R0'], color='r', ls='--')
-    return ax
-
-
-def plot_R_distrib_rad_gauss(params, ax):
-    mu, sig = params['mu'], params['sig']
-    s = sig**2 * (3 * np.pi - 8) / np.pi
-    num_states = np.size(sig)
-    if num_states == 1:
-        r = np.arange(0, mu + 5 * s, s / 20)
-        y = dd.radial_gaussian(r, mu, sig)
-    else:
-        k_s = np.array(params['k_s'])
-        if k_s.ndim == 1:
-            fract = np.array([k_s[1] / (k_s.sum()), k_s[0] / (k_s.sum())])
-        else:
-            fract = ctmc.CT_stationary_distribution(np.asarray(params['k_s']))
-        r = np.arange(0, np.max(mu) + 5 * np.max(s),
-                      np.min(s) / 20)
-        y = np.zeros_like(r)
-        for i in range(num_states):
-            y += fract[i] * dd.radial_gaussian(r, mu[i], sig[i])
-    ax.plot(r, y, 'k')
-    return ax
-
-
-def plot_R_distrib_gauss(params, ax):
-    R_mean, R_sigma = params['R_mean'], params['R_sigma']
-    num_states = np.size(params['R_mean'])
-    if num_states == 1:
-        r = np.arange(0, R_mean + 5 * R_sigma, R_sigma / 20)
-        y = dd.gaussian(r, R_mean, R_sigma)
-    else:
-        k_s = np.array(params['k_s'])
-        if k_s.ndim == 1:
-            fract = np.array([k_s[1] / (k_s.sum()), k_s[0] / (k_s.sum())])
-        else:
-            fract = ctmc.CT_stationary_distribution(np.asarray(params['k_s']))
-        r = np.arange(0, np.max(R_mean) + 5 * np.max(R_sigma),
-                      np.min(R_sigma) / 20)
-        y = np.zeros_like(r)
-        for i in range(num_states):
-            y += fract[i] * dd.gaussian(r, R_mean[i], R_sigma[i])
-    ax.plot(r, y, 'k')
-    return ax
-
-
-def plot_R_distrib_wlc(params, ax):
-    L, lp, offset = params['L'], params['lp'], params['offset']
-    num_states = np.size(L)
-    if num_states == 1:
-        r = np.arange(0, L + offset, L / 100)
-        y = dd.wormlike_chain(r, L, lp, offset=offset)
-        y /= np.trapz(y, r)
-    else:
-        k_s = np.array(params['k_s'])
-        if k_s.ndim == 1:
-            fract = np.array([k_s[1] / (k_s.sum()), k_s[0] / (k_s.sum())])
-        else:
-            fract = ctmc.CT_stationary_distribution(np.asarray(params['k_s']))
-        r = np.arange(0, np.max(L) + np.max(offset) , np.min(L) / 100)
-        y = np.zeros_like(r)
-        for i in range(num_states):
-            yi = dd.wormlike_chain(r, L[i], lp[i], offset=offset[i])
-            y += fract[i] * yi / np.trapz(yi, r)
-    ax.plot(r, y, 'k')
     return ax
 
 
