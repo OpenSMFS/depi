@@ -70,7 +70,8 @@ class BaseDistribution:
 class Gaussian(BaseDistribution):
     param_names = ('R_mean', 'R_sigma')
     _latex_pdf = (r'P(r) = \frac{1}{\sqrt{2 \pi \sigma^2}}'
-                  r'\exp\left(-\frac{(r - \mu)^2}{2\sigma^2}\right) \\')
+                  r'\exp\left(-\frac{(r - \mu)^2}{2\sigma^2}\right) \\'
+                  r'P(r) = 0 \quad\forall \; r \le 0; \qquad \mu > 3 \sigma > 0')
 
     @staticmethod
     def pdf(r, R_mean, R_sigma):
@@ -92,7 +93,9 @@ class RadialGaussian(BaseDistribution):
     _latex_pdf = (r'P(r) = a^{-1}\; (r - r_0)^2 \;'
                   r'\exp\left[-\frac{[(r - r_0)- \mu]^2}{2\sigma^2}\right] \\'
                   r'a = \sqrt{\frac{\pi}{2}}\sigma(\sigma^2 + \mu^2) '
-                  r'    + \mu \sigma^2 exp\left(-\frac{\mu^2}{2\sigma^2} \right)\\')
+                  r'    + \mu \sigma^2 exp\left(-\frac{\mu^2}{2\sigma^2} \right)'
+                  r'\mu \ge 0 \\'
+                  r'P(r) = 0 \quad\forall \; r \le r_0\\')
 
     @staticmethod
     def pdf(r, sigma, offset, mu):
@@ -113,7 +116,8 @@ class RadialGaussian(BaseDistribution):
     def _mean_peaks(self):
         mu, sigma = self.params['mu'], self.params['sigma']
         offset = self.params['offset']
-        return (np.sqrt(np.pi / 2) * mu * sigma * (mu**2 + 3 * sigma**2)
+        return (offset
+                + np.sqrt(np.pi / 2) * mu * sigma * (mu**2 + 3 * sigma**2)
                 * (1 - erf(-mu / (np.sqrt(2) * sigma)))
                 + sigma**2 * (mu**2 + 2 * sigma**2) * np.exp(-0.5 * (mu / sigma)**2))
 
@@ -138,7 +142,8 @@ class GaussianChain(BaseDistribution):
     param_names = ('sigma', 'offset')
     _latex_pdf = (r'P(r) = a^{-1}\; (r - r_0)^2 \;'
                   r'\exp\left[-\frac{(r - r_0)^2}{2\sigma^2}\right] \\'
-                  r'a = \sqrt{\frac{\pi}{2}}\sigma^3 \\')
+                  r'a = \sqrt{\frac{\pi}{2}}\sigma^3 \\'
+                  r'P(r) = 0 \quad\forall \; r \le r_0\\')
 
     @staticmethod
     def pdf(r, sigma, offset):
@@ -166,7 +171,8 @@ class WormLikeChain(BaseDistribution):
     _latex_pdf = (r'P(r) = c\,r^2 \, '
                   r'\left[ 1 - \left(\frac{r}{L}\right)^2 \right]^{-\frac{9}{2}} \,'
                   r'\exp\left[-\frac{9}{8}\frac{L}{l_p}'
-                  r'\left( 1 - \left(\frac{r}{L}\right)^2 \right)^{-1} \right] \\')
+                  r'\left( 1 - \left(\frac{r}{L}\right)^2 \right)^{-1} \right] \\'
+                  r'P(r) = 0 \quad\forall\; r \le 0, \; r \ge L\\')
 
     @staticmethod
     def pdf(r, L, lp, offset):
