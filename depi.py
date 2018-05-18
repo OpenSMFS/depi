@@ -121,7 +121,7 @@ def _check_params_nstates(k_s, num_states, func_2state, func_nstate):
     """Check consistency of parameters in case of more than 1 state.
     Returns type-converted `k_s`.
     """
-    k_s = np.asarray(k_s)
+    k_s = np.asfarray(k_s)
     if k_s.ndim == 1:
         if num_states != 2:
             msg = f'"k_s" (={k_s}) should an {num_states}x{num_states} array.'
@@ -207,7 +207,7 @@ def recolor_burstsph_OU_dist_distrib(
         idx_offset_dd = np.array(idx_offset_list, dtype='int64')
         # Run the multi-state recoloring simulation
         A_em, R_ph, T_ph, S_ph = func(
-            ts, δt, k_D, D_fract, R0, np.asarray(τ_relax), k_s, r_dd, idx_offset_dd, du,
+            ts, δt, k_D, D_fract, R0, np.asfarray(τ_relax), k_s, r_dd, idx_offset_dd, du,
             gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     T_ph = _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, A_fract, rg)
     return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
@@ -276,10 +276,8 @@ def recolor_burstsph_OU_gauss_R(
     _check_args(τ_relax, ndt, α)
     k_D, D_fract = _get_multi_lifetime_components(τ_D, D_fract, 'D')
     k_A, A_fract = _get_multi_lifetime_components(τ_A, A_fract, 'A')
-    ts = timestamps.values
-    # Use the size of R_mean to infer the number of states
-    #dd_params = dict(name='gauss', R_mean=R_mean, R_sigma=R_sigma)
     num_states = _check_dd_params(dd_params, τ_relax)
+    ts = timestamps.values
     if num_states == 1:
         S_ph = None
         if cdf:
@@ -296,9 +294,9 @@ def recolor_burstsph_OU_gauss_R(
             k_s, num_states,
             func_2state=depi_cy.sim_DA_from_timestamps2_p2_2states_cy,
             func_nstate=depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy)
-        params = (np.asarray(dd_params['R_mean']),
-                  np.asarray(dd_params['R_sigma']),
-                  np.asarray(τ_relax), np.asarray(k_s))
+        params = (np.asfarray(dd_params['R_mean']),
+                  np.asfarray(dd_params['R_sigma']),
+                  np.asfarray(τ_relax), np.asfarray(k_s))
         A_em, R_ph, T_ph, S_ph = func(
             ts, δt, k_D, D_fract, R0, *params,
             gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
@@ -308,7 +306,7 @@ def recolor_burstsph_OU_gauss_R(
 
 def _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, A_fract, rg):
     A_mask = A_em.view(bool)
-    T_ph = np.asarray(T_ph)
+    T_ph = np.asfarray(T_ph)
     if np.size(τ_A) == 1:
         # Add exponentially distributed lifetimes to A nanotimes
         T_ph[A_mask] += rg.exponential(scale=τ_A, size=A_mask.sum())
