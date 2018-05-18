@@ -56,8 +56,7 @@ cdef inline double ou_single_step_cy0(double x0, double delta_t, double N,
 @cython.wraparound(False)
 @cython.cdivision(True)
 def sim_DA_from_timestamps2_p2_cy(
-        np.int64_t[:] timestamps, double dt, double[:] K_D, double[:] D_fract,
-        double R0,
+        np.int64_t[:] timestamps, double dt, double[:] K_D, double[:] D_fract, double R0,
         double R_mean, double R_sigma, double tau_relax,
         *, double gamma=1.0, rg=np.random.RandomState(),
         int chunk_size=1000, double alpha=0.05, double ndt=10):
@@ -917,11 +916,10 @@ def sim_DA_from_timestamps2_p2_Nstates_cym(
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def sim_DA_from_timestamps2_p_cy(np.int64_t[:] timestamps, double dt_max,
-                                 double k_D, double R0, double R_mean,
-                                 double R_sigma, double tau_relax, rg,
-                                 int chunk_size=1000,
-                                 double alpha=0.05, double ndt=10):
+def sim_DA_from_timestamps2_p_cy(
+        np.int64_t[:] timestamps, double dt_max, double k_D, double R0,
+        double R_mean, double R_sigma, double tau_relax, rg,
+        int chunk_size=1000, double alpha=0.05, double ndt=10):
     cdef double R_ou = rg.randn() * R_sigma
     cdef double R, delta_t, dt, nanotime, k_ET, d_prob_ph_em, k_emission
     cdef np.int64_t t, t0#, ni=0

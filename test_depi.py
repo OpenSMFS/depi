@@ -200,15 +200,17 @@ def test_cdf_vs_dt_cy():
     R_mean = 6.5 * nm
     R_sigma = 1 * nm
     τ_relax = 0.2 * ns
-    τ_D = 4 * ns
-    k_D = 1 / τ_D
+    τ_D = 4. * ns
+    k_D = 1. / τ_D
+    D_fract = np.atleast_1d(1.)
     ts = burstsph.timestamp.values[:100000]
     rg = RandomGenerator(Xoroshiro128(1))
     A_em, R_ph, T_ph = depi_cy.sim_DA_from_timestamps2_p_cy(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg, ndt=0, alpha=np.inf)
     rg = RandomGenerator(Xoroshiro128(1))
     A_emp, R_php, T_php = depi_cy.sim_DA_from_timestamps2_p2_cy(
-        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg, ndt=0, alpha=np.inf)
+        ts, δt, np.atleast_1d(k_D), D_fract, R0, R_mean, R_sigma, τ_relax, rg=rg,
+        ndt=0, alpha=np.inf)
     assert not all([not np.allclose(A_em, A_emp),
                     not np.allclose(R_ph, R_php),
                     not np.allclose(T_ph, T_php)])
@@ -227,16 +229,15 @@ def test_2states_py_vs_cy():
     τ_D = 3.8 * ns
 
     k_D = 1 / τ_D
+    D_fract = np.atleast_1d(1.)
     ts = burstsph.timestamp.values[:10000]
 
     rg = RandomGenerator(Xoroshiro128(1))
     A_em, R_ph, T_ph, S_ph = depi.sim_DA_from_timestamps2_p2_2states(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, k_s, rg=rg)
-
     rg = RandomGenerator(Xoroshiro128(1))
     A_emp, R_php, T_php, S_php = depi_cy.sim_DA_from_timestamps2_p2_2states_cy(
-        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, k_s, rg=rg, ndt=0)
-
+        ts, δt, np.atleast_1d(k_D), D_fract, R0, R_mean, R_sigma, τ_relax, k_s, rg=rg, ndt=0)
     assert np.allclose(R_php, R_ph)
     assert np.allclose(T_php, T_ph)
     assert np.allclose(S_php, S_ph)
@@ -258,13 +259,14 @@ def test_Nstates_py_vs_cy():
     τ_D = 3.8 * ns
 
     k_D = 1 / τ_D
+    D_fract = np.atleast_1d(1.)
     ts = burstsph.timestamp.values[:5000]
     rg = RandomGenerator(Xoroshiro128(1))
     A_em, R_ph, T_ph, S_ph = depi.sim_DA_from_timestamps2_p2_Nstates(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, K_s, rg=rg)
     rg = RandomGenerator(Xoroshiro128(1))
     A_emp, R_php, T_php, S_php = depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy(
-        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, K_s, rg=rg, ndt=0)
+        ts, δt, np.atleast_1d(k_D), D_fract, R0, R_mean, R_sigma, τ_relax, K_s, rg=rg, ndt=0)
     assert np.allclose(R_php, R_ph)
     assert np.allclose(T_php, T_ph)
     assert np.allclose(S_php, S_ph)
@@ -287,14 +289,15 @@ def test_2states_vs_Nstates():
     τ_D = 3.8 * ns
 
     k_D = 1 / τ_D
+    D_fract = np.atleast_1d(1.)
     ts = burstsph.timestamp.values[:10000]
 
     rg = RandomGenerator(Xoroshiro128(1))
     A_em, R_ph, T_ph, S_ph = depi_cy.sim_DA_from_timestamps2_p2_2states_cy(
-        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, k_s, rg=rg)
+        ts, δt, np.atleast_1d(k_D), D_fract, R0, R_mean, R_sigma, τ_relax, k_s, rg=rg)
     rg = RandomGenerator(Xoroshiro128(1))
     A_emp, R_php, T_php, S_php = depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy(
-        ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, K_s, rg=rg, ndt=0)
+        ts, δt, np.atleast_1d(k_D), D_fract, R0, R_mean, R_sigma, τ_relax, K_s, rg=rg, ndt=0)
     assert np.allclose(R_php, R_ph)
     assert np.allclose(T_php, T_ph)
     assert np.allclose(S_php, S_ph)
