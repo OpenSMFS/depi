@@ -112,6 +112,7 @@ class RadialGaussian(BaseDistribution):
 
     def _mean_peaks(self):
         mu, sigma = self.params['mu'], self.params['sigma']
+        offset = self.params['offset']
         return (np.sqrt(np.pi / 2) * mu * sigma * (mu**2 + 3 * sigma**2)
                 * (1 - erf(-mu / (np.sqrt(2) * sigma)))
                 + sigma**2 * (mu**2 + 2 * sigma**2) * np.exp(-0.5 * (mu / sigma)**2))
@@ -143,9 +144,16 @@ class GaussianChain(BaseDistribution):
     def pdf(r, sigma, offset):
         return RadialGaussian.pdf(r, sigma, offset, mu=0)
 
+    def _mean_peaks(self):
+        sigma, offset = self.params['sigma'], self.params['offset']
+        return offset + 2 * sigma * np.sqrt(2 / np.pi)
+
+    def _std_dev_peaks(self):
+        sigma = self.params['sigma']
+        return sigma * np.sqrt((3 * np.pi - 8) / np.pi)
+
     def r_max(self, n=5):
-        std_dev = np.max(self.params['sigma'])**2 * (3 * np.pi - 8) / np.pi
-        return np.max(self.params['offset']) + n * std_dev
+        return np.max(self._mean_peaks()) + n * np.max(self._std_dev_peaks())
 
     def _html_params(self):
         p = self.params
@@ -228,7 +236,7 @@ def get_r_dist_distrib(du, u_max, dr, dd_params):
     # CDF of the standard normal distribution with sigma = 1
     norm_cdf, idx_offset = _get_norm_cdf(du, u_max)
     # PDF and CDF of the new distance distribution
-    r, dd_pdf = distribution(dd_params).get_pdf(dr)
+    r, dd_pdf = distribution(dd_params).get_pdf(dr, n=5)
     dd_cdf = np.cumsum(dd_pdf) * dr
     assert dd_cdf[-1] <= 1 + 1e-10, 'CDF is larger than 1!'
     assert 1 - dd_cdf[-1] < 1e-3, 'CDF axis range too small. '
