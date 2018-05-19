@@ -22,6 +22,28 @@ def distribution(params):
     return model[name](params)
 
 
+def _check_k_s(k_s, num_states):
+    """Check consistency of k_s parameter in case of more than 1 state.
+    Returns k_s converted to a float-array.
+    """
+    if num_states == 1:
+        return
+    if k_s is None:
+        msg = (f'Missing k_s parameters, necessary in a '
+               f'{num_states}-states model.')
+        raise ValueError(msg)
+    k_s = np.asfarray(k_s)
+    if k_s.ndim == 1 and num_states == 2:
+        if np.size(k_s) != 2:
+            msg = f'"k_s" (={k_s}) should be a 2-element 1d array or an 2x2 array.'
+            raise TypeError(msg)
+    else:
+        if k_s.shape != (num_states, num_states):
+            msg = f'"k_s" (={k_s}) should be an {num_states}x{num_states} array.'
+            raise TypeError(msg)
+    return k_s
+
+
 class BaseDistribution:
     # Redefine these attributes in sub-classes:
     param_names = tuple()
@@ -32,12 +54,26 @@ class BaseDistribution:
         self.params = {k: np.asfarray(v) for k, v in params.items()
                        if k in self.param_names}
         self.num_states = self._get_num_states()
+        self._check_params(params)
         if self.num_states > 1:
-            self.k_s = k_s = np.asfarray(params['k_s'])
-            if k_s.ndim == 1:
-                self.fract = np.array([k_s[1] / (k_s.sum()), k_s[0] / (k_s.sum())])
-            else:
-                self.fract = ctmc.CT_stationary_distribution(k_s)
+            self._setup_multi_state(params.get('k_s'))
+
+    def _setup_multi_state(self, k_s):
+        self.k_s = k_s = _check_k_s(k_s, self.num_states)
+        if k_s.ndim == 1:
+            self.fract = np.array([k_s[1] / (k_s.sum()), k_s[0] / (k_s.sum())])
+        else:
+            self.fract = ctmc.CT_stationary_distribution(k_s)
+
+    def _check_params(self, params):
+        for param_name in self.param_names:
+            if param_name not in params:
+                raise TypeError(f'Missing parameter {param_name} in model "{self.name}".')
+        for k, v in self.params.items():
+            if np.size(v) != self.num_states:
+                msg = (f'Parameter `{k}` ({v}) must have the same '
+                       f'size as the number of states ({self.num_states}).')
+                raise TypeError(msg)
 
     def _get_num_states(self):
         for k, v in self.params.items():
