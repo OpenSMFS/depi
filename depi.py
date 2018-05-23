@@ -100,8 +100,8 @@ def _get_multi_lifetime_components(τ_X, X_fract, label='D'):
 
 
 def recolor_burstsph(
-        timestamps, *, R0, τ_relax, δt, τ_D, τ_A, gamma=1.0, D_fract=1.,
-        A_fract=1., rg=None, chunk_size=1000, α=0.05, ndt=10,
+        timestamps, *, R0, τ_relax, δt, τ_D, τ_A, D_fract=1., A_fract=1.,
+        gamma=1.0, lk=0., dir_ex_t=0, rg=None, chunk_size=1000, α=0.05, ndt=10,
         **dd_model):
     name = dd_model['name'].lower()
     dd.assert_valid_model_name(name)
@@ -112,17 +112,18 @@ def recolor_burstsph(
         # Any non-Gaussian distance distribution
         func = recolor_burstsph_OU_dist_distrib
     return func(
-        timestamps, R0=R0, gamma=gamma, τ_relax=τ_relax, δt=δt,
+        timestamps, R0=R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, τ_relax=τ_relax, δt=δt,
         τ_D=τ_D, D_fract=D_fract, τ_A=τ_A, A_fract=A_fract,
         rg=rg, chunk_size=chunk_size, α=α, ndt=ndt, dd_params=dd_model)
 
 
 def recolor_burstsph_OU_dist_distrib(
-        timestamps, *, R0, gamma, τ_relax, dd_params, δt,
+        timestamps, *, R0, gamma, lk, dir_ex_t, τ_relax, dd_params, δt,
         τ_D, τ_A, D_fract=1., A_fract=1.,
         rg=None, chunk_size=1000, α=0.05, ndt=10):
     """Recoloring simulation with non-Gaussian distance distribution.
     """
+    gamma_lk = gamma / (1 + lk)
     d = dd.distribution(dd_params)  # validates the distance-distribution parameters
     _check_args(τ_relax, ndt, α, d.num_states)
     k_D, D_fract = _get_multi_lifetime_components(τ_D, D_fract, 'D')
@@ -145,7 +146,7 @@ def recolor_burstsph_OU_dist_distrib(
         # Run the 1-state recoloring simulation
         A_em, R_ph, T_ph = depi_cy.sim_DA_from_timestamps2_p2_dist_cy(
             ts, δt, k_D, D_fract, R0, p['τ_relax'], r_dd, idx_offset_dd, du,
-            gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
+            gamma=gamma_lk, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     else:
         funcs = {1: depi_cy.sim_DA_from_timestamps2_p2_2states_dist_cy,
                  2: depi_cy.sim_DA_from_timestamps2_p2_Nstates_dist_cy}
@@ -163,13 +164,14 @@ def recolor_burstsph_OU_dist_distrib(
         # Run the multi-state recoloring simulation
         A_em, R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
             ts, δt, k_D, D_fract, R0, np.asfarray(τ_relax), d.k_s, r_dd, idx_offset_dd, du,
-            gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-    T_ph = _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, A_fract, rg)
-    return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
+            gamma=gamma_lk, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
+    A_em_lk, T_ph_dir_ex = _compute_D_leakage_A_dir_ex(A_em, T_ph, gamma, lk, dir_ex_t, rg)
+    T_ph_complete = _calc_T_ph_with_acceptor(A_em, T_ph_dir_ex, τ_A, A_fract, rg)
+    return _make_burstsph_df(timestamps, T_ph_complete, A_em_lk, R_ph, S_ph)
 
 
 def recolor_burstsph_OU_gauss_R(
-        timestamps, *, R0, gamma, τ_relax, dd_params, δt,
+        timestamps, *, R0, gamma, lk, dir_ex_t, τ_relax, dd_params, δt,
         τ_D, τ_A, D_fract=1., A_fract=1.,
         rg=None, chunk_size=1000, α=0.05, ndt=10, cdf=True):
     """Recolor burst photons with Ornstein–Uhlenbeck D-A distance diffusion.
@@ -228,6 +230,7 @@ def recolor_burstsph_OU_gauss_R(
     """
     if rg is None:
         rg = np.random.RandomState()
+    gamma_lk = gamma / (1 + lk)
     d = dd.distribution(dd_params)  # validates the distance-distribution parameters
     _check_args(τ_relax, ndt, α, d.num_states)
     k_D, D_fract = _get_multi_lifetime_components(τ_D, D_fract, 'D')
@@ -241,10 +244,9 @@ def recolor_burstsph_OU_gauss_R(
             func = depi_cy.sim_DA_from_timestamps2_p_cy
         A_em, R_ph, T_ph = func(
             ts, δt, k_D, D_fract, R0, dd_params['R_mean'],
-            dd_params['R_sigma'], τ_relax, gamma=gamma,
+            dd_params['R_sigma'], τ_relax, gamma=gamma_lk,
             rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     else:
-        # Check that all parameters have length equal to num_states
         funcs = {1: depi_cy.sim_DA_from_timestamps2_p2_2states_cy,
                  2: depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy}
         params = (np.asfarray(dd_params['R_mean']),
@@ -252,9 +254,44 @@ def recolor_burstsph_OU_gauss_R(
                   np.asfarray(τ_relax), np.asfarray(d.k_s))
         A_em, R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
             ts, δt, k_D, D_fract, R0, *params,
-            gamma=gamma, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-    T_ph = _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, A_fract, rg)
-    return _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph)
+            gamma=gamma_lk, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
+    A_em_lk, T_ph_dir_ex = _compute_D_leakage_A_dir_ex(A_em, T_ph, gamma, lk, dir_ex_t, rg)
+    T_ph_complete = _calc_T_ph_with_acceptor(A_em, T_ph_dir_ex, τ_A, A_fract, rg)
+    return _make_burstsph_df(timestamps, T_ph_complete, A_em_lk, R_ph, S_ph)
+
+
+def _compute_D_leakage_A_dir_ex(A_em, T_ph, gamma, lk, dir_ex_t, rg):
+    A_em = A_em.view(bool)
+    D_em = ~A_em
+    NA = A_em.sum()
+    ND = A_em.size - NA
+    assert D_em.sum() == ND
+
+    # Assign D leakage photons
+    A_em_lk = A_em.copy()
+    fract_lk_ph = lk / (1 + lk)
+    leaked_photons = rg.binomial(1, p=fract_lk_ph, size=ND).astype(bool)
+    A_em_lk[D_em] = leaked_photons
+
+    # Introduce the effect of A direct excitation
+    nd = A_em.size - A_em_lk.sum()  # D photons after leakage correction
+    assert (~A_em_lk).sum() == nd
+    fract_dir_ex_ph = (NA - dir_ex_t * gamma * nd) / (NA * (1 + dir_ex_t))
+    dir_ex_photons = rg.binomial(1, p=fract_dir_ex_ph, size=NA).astype(bool)
+    T_ph_dir_ex = T_ph.copy()
+    T_ph_dir_ex[A_em][dir_ex_photons] = 0
+    return A_em_lk, T_ph_dir_ex
+
+
+def _reassign_D_leakage_photons(A_em, lk, rg):
+    A_em = A_em.view(bool)
+    D_em = ~A_em
+    num_D = D_em.sum()
+    fract_lk_ph = lk / (1 + lk)
+    leaked_photons = rg.binomial(1, p=fract_lk_ph, size=num_D).astype(bool)
+    assert (D_em[D_em]).all()
+    A_em[D_em] = leaked_photons
+    return A_em
 
 
 def _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, A_fract, rg):
