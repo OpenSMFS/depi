@@ -45,10 +45,14 @@ def _check_k_s(k_s, num_states):
 
 
 class BaseDistribution:
-    # Redefine these attributes in sub-classes:
-    param_names = tuple()
-    _pdf_latex = (r'P(r) = {\rm\; to \; be \; implemented} \\')
+    """Base distance distribution to be subclassed.
 
+    Sub-classes must define the attributes `param_names` (tuple of parameters names)
+    and `_pdf_latex` (a string with a LaTeX representation of the PDF).
+    They should also define the static method `pdf` (a function defining the PDF),
+    and the methods `r_max` (returning the r max value) and `_html_params` (returning
+    a string with HTML representation of paramenters).
+    """
     def __init__(self, params):
         self.name = params['name']
         self.params = {k: np.asfarray(v) for k, v in params.items()
