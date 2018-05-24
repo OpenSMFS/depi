@@ -131,8 +131,8 @@ def sim_DA_from_timestamps2_p2_cy(
             R = R_ou + R_mean
 
         # photon emitted, let's decide if it is from D or A
-        k_ET_corr = (1 + dir_ex_t) * k_ET + gamma * dir_ex_t * k_D
-        k_D_corr = k_D * (1 + lk) / gamma
+        k_ET_corr = (1 + dir_ex_t) * k_ET + dir_ex_t * k_D + lk * k_D / gamma
+        k_D_corr = k_D / gamma
         prob_A_em = k_ET_corr / (k_ET_corr + k_D_corr)
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
         if prob_A_em >= p_DA:

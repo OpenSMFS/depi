@@ -302,10 +302,10 @@ def recolor_burstsph_OU_gauss_R(
         A_em, R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
             ts, δt, k_D, D_fract, R0, *params, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t,
             rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-    A_em_lk, T_ph_dir_ex, lk_ph, dir_ex_ph = _compute_D_leakage_A_dir_ex(
+    A_em_nolk, T_ph_dir_ex, lk_ph, dir_ex_ph = _compute_D_leakage_A_dir_ex(
         A_em, T_ph, gamma, lk, dir_ex_t, rg)
-    T_ph_complete = _calc_T_ph_with_acceptor(A_em, T_ph_dir_ex, τ_A, A_fract, rg)
-    df = _make_burstsph_df(timestamps, T_ph_complete, A_em_lk, R_ph, S_ph)
+    T_ph_complete = _calc_T_ph_with_acceptor(A_em_nolk, T_ph_dir_ex, τ_A, A_fract, rg)
+    df = _make_burstsph_df(timestamps, T_ph_complete, A_em, R_ph, S_ph)
     df['leak_ph'] = lk_ph
     df['dir_ex_ph'] = dir_ex_ph
     return df
@@ -319,27 +319,31 @@ def _compute_D_leakage_A_dir_ex(A_em, T_ph, gamma, lk, dir_ex_t, rg):
     assert D_em.sum() == ND
 
     # Assign D leakage photons
-    A_em_lk = A_em.copy()
-    fract_lk_ph = lk / (1 + lk)
-    leaked_photons = rg.binomial(1, p=fract_lk_ph, size=ND).astype(bool)
+    # fract_lk_ph = lk / (1 + lk)
+    fract_lk_ph = lk * ND / NA
+    leaked_photons = rg.binomial(1, p=fract_lk_ph, size=NA).astype(bool)
     print(f'Fraction leaked: {fract_lk_ph}')
     print('Leaked ph unique values: ', np.unique(leaked_photons))
-    A_em_lk[D_em] = leaked_photons
+    # A_em_lk[D_em] = leaked_photons
+    A_em_nolk = A_em.copy()
+    A_em_nolk[A_em] = ~leaked_photons
     lk_ph = np.zeros_like(A_em)
-    lk_ph[D_em] = leaked_photons
+    lk_ph[A_em] = leaked_photons
+    assert lk_ph.sum() == leaked_photons.sum(), f'{lk_ph.sum()}, {leaked_photons.sum()}'
 
     # Introduce the effect of A direct excitation
-    nd = A_em.size - A_em_lk.sum()  # D photons remaining after leakage correction
-    assert (~A_em_lk).sum() == nd
-    fract_dir_ex_ph = dir_ex_t * (gamma * nd + NA) / (NA * (1 + dir_ex_t))
-    dir_ex_photons = rg.binomial(1, p=fract_dir_ex_ph, size=NA).astype(bool)
+    #nd = A_em.size - A_em_lk.sum()  # D photons remaining after leakage correction
+    #assert (~A_em_lk).sum() == nd
+    na = (NA - dir_ex_t * gamma * ND - lk * ND) / (1 + dir_ex_t)
+    fract_dir_ex_ph = dir_ex_t * (gamma * ND + na) / (NA - leaked_photons.sum())
+    dir_ex_photons = rg.binomial(1, p=fract_dir_ex_ph, size=(NA - leaked_photons.sum())).astype(bool)
     print('Dir ex unique values:', np.unique(dir_ex_photons))
-    na = NA - dir_ex_photons.sum()
-    print(f'Fraction dir_ex: {fract_dir_ex_ph}, NA * fA = {fract_dir_ex_ph * NA}, '
-          f'# dir_ex ph {dir_ex_photons.sum()}')
-    print('Empirical dir_ex_t: ', dir_ex_photons.sum() / (gamma * nd + na))
+    #na_emp = NA - dir_ex_photons.sum()
+    #print(f'Fraction dir_ex: {fract_dir_ex_ph}, NA * fA = {fract_dir_ex_ph * NA}, '
+    #      f'# dir_ex ph {dir_ex_photons.sum()}')
+    #print('Empirical dir_ex_t: ', dir_ex_photons.sum() / (gamma * nd + na))
     dir_ex_ph = np.zeros_like(A_em)
-    dir_ex_ph[A_em] = dir_ex_photons
+    dir_ex_ph[A_em * (~lk_ph)] = dir_ex_photons
     T_ph_dir_ex = T_ph.copy()
     T_ph_dir_ex[dir_ex_ph] = 0
     print('Initial zero nanotimes: ', (T_ph == 0).sum())
@@ -348,7 +352,7 @@ def _compute_D_leakage_A_dir_ex(A_em, T_ph, gamma, lk, dir_ex_t, rg):
     # assert (T_ph_dir_ex == 0).sum() == dir_ex_photons.sum(), f'{(T_ph_dir_ex == 0).sum()}'
     assert (T_ph_dir_ex[dir_ex_ph] == 0).all(), f'{(T_ph_dir_ex[dir_ex_ph] == 0).sum()}'
     assert lk_ph.sum() == leaked_photons.sum(), f'{lk_ph.sum()}'
-    return A_em_lk, T_ph_dir_ex, lk_ph, dir_ex_ph
+    return A_em_nolk, T_ph_dir_ex, lk_ph, dir_ex_ph
 
 
 def _reassign_D_leakage_photons(A_em, lk, rg):
