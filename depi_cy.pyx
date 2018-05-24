@@ -58,7 +58,7 @@ cdef inline double ou_single_step_cy0(double x0, double delta_t, double N,
 def sim_DA_from_timestamps2_p2_cy(
         np.int64_t[:] timestamps, double dt, double[:] K_D, double[:] D_fract, double R0,
         double R_mean, double R_sigma, double tau_relax,
-        *, double gamma=1.0, rg=np.random.RandomState(),
+        *, double gamma=1.0, double lk=0., double dir_ex_t=0., rg=np.random.RandomState(),
         int chunk_size=1000, double alpha=0.05, double ndt=10):
     cdef double R_ou = rg.randn() * R_sigma
     cdef double R, R_prev, delta_t, nanotime, k_ET, d_prob_ph_em, k_emission
@@ -131,8 +131,10 @@ def sim_DA_from_timestamps2_p2_cy(
             R = R_ou + R_mean
 
         # photon emitted, let's decide if it is from D or A
+        k_ET_corr = (1 + dir_ex_t) * k_ET + gamma * dir_ex_t * k_D
+        k_D_corr = k_D * (1 + lk) / gamma
+        prob_A_em = k_ET_corr / (k_ET_corr + k_D_corr)
         p_DA = p / d_prob_ph_em  # equivalent to rand(), but faster
-        prob_A_em = k_ET / (k_ET + k_D / gamma)
         if prob_A_em >= p_DA:
             A_ph[iph] = True
         # time of D de-excitation by photon emission or energy transfer to A

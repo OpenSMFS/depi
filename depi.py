@@ -7,6 +7,51 @@ import ctmc
 import dist_distrib as dd
 
 
+def correct_E_gamma_leak_dir(Eraw, gamma=1, leakage=0, dir_ex_t=0):
+    """Compute corrected FRET efficiency from proximity ratio `Eraw`.
+
+    This function is the inverse of :func:`uncorrect_E_gamma_leak_dir`.
+
+    Arguments:
+        Eraw (float or array): proximity ratio (only background correction,
+            no gamma, leakage or direct excitation)
+        gamma (float): gamma factor
+        leakage (float): leakage coefficient
+        dir_ex_t (float): coefficient expressing the direct excitation as
+            n_dir = dir_ex_t * (na + gamma*nd). In terms of physical
+            parameters it is the ratio of acceptor over donor absorption
+            cross-sections at the donor-excitation wavelength.
+
+    Returns
+        Corrected FRET effciency
+    """
+    Eraw = np.asarray(Eraw)
+    return ((Eraw * (leakage + dir_ex_t * gamma + 1) - leakage - dir_ex_t * gamma)
+            / (Eraw * (leakage - gamma + 1) - leakage + gamma))
+
+
+def uncorrect_E_gamma_leak_dir(E, gamma=1, leakage=0, dir_ex_t=0):
+    """Compute proximity ratio from corrected FRET efficiency `E`.
+
+    This function is the inverse of :func:`correct_E_gamma_leak_dir`.
+
+    Arguments:
+        E (float or array): corrected FRET efficiency
+        gamma (float): gamma factor
+        leakage (float): leakage coefficient
+        dir_ex_t (float): direct excitation coefficient expressed as
+            n_dir = dir_ex_t * (na + gamma*nd). In terms of physical
+            parameters it is the ratio of absorption cross-section at
+            donor-excitation wavelengths of acceptor over donor.
+
+    Returns
+        Proximity ratio (reverses gamma, leakage and direct excitation)
+    """
+    E = np.asarray(E)
+    return ((E * (gamma - leakage) + leakage + dir_ex_t * gamma)
+            / (E * (gamma - leakage - 1) + leakage + dir_ex_t * gamma + 1))
+
+
 def E_from_dist(x, R0):
     """Return E computed from D-A distance and R0
     """
@@ -101,7 +146,7 @@ def _get_multi_lifetime_components(τ_X, X_fract, label='D'):
 
 def recolor_burstsph(
         timestamps, *, R0, τ_relax, δt, τ_D, τ_A, D_fract=1., A_fract=1.,
-        gamma=1.0, lk=0., dir_ex_t=0, rg=None, chunk_size=1000, α=0.05, ndt=10,
+        gamma=1.0, lk=0., dir_ex_t=0., rg=None, chunk_size=1000, α=0.05, ndt=10,
         **dd_model):
     name = dd_model['name'].lower()
     dd.assert_valid_model_name(name)
@@ -123,13 +168,14 @@ def recolor_burstsph_OU_dist_distrib(
         rg=None, chunk_size=1000, α=0.05, ndt=10):
     """Recoloring simulation with non-Gaussian distance distribution.
     """
+    print(f'gamma = {gamma}, lk = {lk}, dir_ex_t = {dir_ex_t}')
+    if rg is None:
+        rg = np.random.RandomState()
     gamma_lk = gamma / (1 + lk)
     d = dd.distribution(dd_params)  # validates the distance-distribution parameters
     _check_args(τ_relax, ndt, α, d.num_states)
     k_D, D_fract = _get_multi_lifetime_components(τ_D, D_fract, 'D')
     k_A, A_fract = _get_multi_lifetime_components(τ_A, A_fract, 'A')
-    if rg is None:
-        rg = np.random.RandomState()
     ts = timestamps.values
     # Extract the fixed parameters that do not depend on the number of states
     dd_params = dd_params.copy()
@@ -228,9 +274,10 @@ def recolor_burstsph_OU_gauss_R(
             (same as input timestamps), 'nanotime' (simulated TCSPC nanotime)
             and 'stream' (color or the photon).
     """
+    print(f'gamma = {gamma}, lk = {lk}, dir_ex_t = {dir_ex_t}')
     if rg is None:
         rg = np.random.RandomState()
-    gamma_lk = gamma / (1 + lk)
+    #gamma_lk = gamma / (1 + lk)
     d = dd.distribution(dd_params)  # validates the distance-distribution parameters
     _check_args(τ_relax, ndt, α, d.num_states)
     k_D, D_fract = _get_multi_lifetime_components(τ_D, D_fract, 'D')
@@ -244,7 +291,7 @@ def recolor_burstsph_OU_gauss_R(
             func = depi_cy.sim_DA_from_timestamps2_p_cy
         A_em, R_ph, T_ph = func(
             ts, δt, k_D, D_fract, R0, dd_params['R_mean'],
-            dd_params['R_sigma'], τ_relax, gamma=gamma_lk,
+            dd_params['R_sigma'], τ_relax, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t,
             rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     else:
         funcs = {1: depi_cy.sim_DA_from_timestamps2_p2_2states_cy,
@@ -253,11 +300,15 @@ def recolor_burstsph_OU_gauss_R(
                   np.asfarray(dd_params['R_sigma']),
                   np.asfarray(τ_relax), np.asfarray(d.k_s))
         A_em, R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
-            ts, δt, k_D, D_fract, R0, *params,
-            gamma=gamma_lk, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-    A_em_lk, T_ph_dir_ex = _compute_D_leakage_A_dir_ex(A_em, T_ph, gamma, lk, dir_ex_t, rg)
+            ts, δt, k_D, D_fract, R0, *params, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t,
+            rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
+    A_em_lk, T_ph_dir_ex, lk_ph, dir_ex_ph = _compute_D_leakage_A_dir_ex(
+        A_em, T_ph, gamma, lk, dir_ex_t, rg)
     T_ph_complete = _calc_T_ph_with_acceptor(A_em, T_ph_dir_ex, τ_A, A_fract, rg)
-    return _make_burstsph_df(timestamps, T_ph_complete, A_em_lk, R_ph, S_ph)
+    df = _make_burstsph_df(timestamps, T_ph_complete, A_em_lk, R_ph, S_ph)
+    df['leak_ph'] = lk_ph
+    df['dir_ex_ph'] = dir_ex_ph
+    return df
 
 
 def _compute_D_leakage_A_dir_ex(A_em, T_ph, gamma, lk, dir_ex_t, rg):
@@ -271,16 +322,33 @@ def _compute_D_leakage_A_dir_ex(A_em, T_ph, gamma, lk, dir_ex_t, rg):
     A_em_lk = A_em.copy()
     fract_lk_ph = lk / (1 + lk)
     leaked_photons = rg.binomial(1, p=fract_lk_ph, size=ND).astype(bool)
+    print(f'Fraction leaked: {fract_lk_ph}')
+    print('Leaked ph unique values: ', np.unique(leaked_photons))
     A_em_lk[D_em] = leaked_photons
+    lk_ph = np.zeros_like(A_em)
+    lk_ph[D_em] = leaked_photons
 
     # Introduce the effect of A direct excitation
-    nd = A_em.size - A_em_lk.sum()  # D photons after leakage correction
+    nd = A_em.size - A_em_lk.sum()  # D photons remaining after leakage correction
     assert (~A_em_lk).sum() == nd
-    fract_dir_ex_ph = (NA - dir_ex_t * gamma * nd) / (NA * (1 + dir_ex_t))
+    fract_dir_ex_ph = dir_ex_t * (gamma * nd + NA) / (NA * (1 + dir_ex_t))
     dir_ex_photons = rg.binomial(1, p=fract_dir_ex_ph, size=NA).astype(bool)
+    print('Dir ex unique values:', np.unique(dir_ex_photons))
+    na = NA - dir_ex_photons.sum()
+    print(f'Fraction dir_ex: {fract_dir_ex_ph}, NA * fA = {fract_dir_ex_ph * NA}, '
+          f'# dir_ex ph {dir_ex_photons.sum()}')
+    print('Empirical dir_ex_t: ', dir_ex_photons.sum() / (gamma * nd + na))
+    dir_ex_ph = np.zeros_like(A_em)
+    dir_ex_ph[A_em] = dir_ex_photons
     T_ph_dir_ex = T_ph.copy()
-    T_ph_dir_ex[A_em][dir_ex_photons] = 0
-    return A_em_lk, T_ph_dir_ex
+    T_ph_dir_ex[dir_ex_ph] = 0
+    print('Initial zero nanotimes: ', (T_ph == 0).sum())
+    assert dir_ex_ph.sum() == dir_ex_photons.sum()
+    # This assertion is not true becase there are some 0 values in T_ph already
+    # assert (T_ph_dir_ex == 0).sum() == dir_ex_photons.sum(), f'{(T_ph_dir_ex == 0).sum()}'
+    assert (T_ph_dir_ex[dir_ex_ph] == 0).all(), f'{(T_ph_dir_ex[dir_ex_ph] == 0).sum()}'
+    assert lk_ph.sum() == leaked_photons.sum(), f'{lk_ph.sum()}'
+    return A_em_lk, T_ph_dir_ex, lk_ph, dir_ex_ph
 
 
 def _reassign_D_leakage_photons(A_em, lk, rg):
