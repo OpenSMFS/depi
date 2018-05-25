@@ -52,7 +52,7 @@ def E_from_dist(x, R0):
     """
     x = np.asarray(x)
     E = 1 / (1 + (x / R0)**6)
-    if not np.isscalar(x):
+    if x.ndim > 0:
         E[x < 0] = 1
     elif x < 0:
         E = 0

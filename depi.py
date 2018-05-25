@@ -1,9 +1,6 @@
-from math import exp
 import numpy as np
 import pandas as pd
 import depi_cy
-from depi_cy import ou_single_step_cy
-import ctmc
 import dist_distrib as dd
 import fret
 
@@ -71,7 +68,6 @@ def recolor_burstsph_OU_dist_distrib(
         rg=None, chunk_size=1000, α=0.05, ndt=10):
     """Recoloring simulation with non-Gaussian distance distribution.
     """
-    print(f'gamma = {gamma}, lk = {lk}, dir_ex_t = {dir_ex_t}')
     if rg is None:
         rg = np.random.RandomState()
     d = dd.distribution(dd_params)  # validates the distance-distribution parameters
@@ -113,15 +109,10 @@ def recolor_burstsph_OU_dist_distrib(
         R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
             ts, δt, k_D, D_fract, R0, np.asfarray(τ_relax), d.k_s, r_dd, idx_offset_dd, du,
             rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-    print('- Coloring photons ... ', flush=True, end='')
-    A_em, A_em_nolk, T_ph_dir_ex, lk_ph, dir_ex_ph = _color_photons(
-        R_ph, R0, T_ph=T_ph, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
-    T_ph_complete = _add_acceptor_nanotime(A_em_nolk, T_ph_dir_ex, τ_A, A_fract, rg)
-    print('DONE\n- Making dataframe ...', flush=True, end='')
-    A_em, T_ph_complete,
-    df = _make_burstsph_df(timestamps, T_ph_complete, A_em, R_ph, S_ph, lk_ph, dir_ex_ph)
-    print('DONE', flush=True)
-    return df
+    burstsph = _make_burstsph_df(timestamps, T_ph, R_ph, S_ph)
+    burstsph = _color_photons(burstsph, R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
+    burstsph = _add_acceptor_nanotime(burstsph, τ_A, A_fract, rg)
+    return burstsph
 
 
 def recolor_burstsph_OU_gauss_R(
@@ -182,7 +173,6 @@ def recolor_burstsph_OU_gauss_R(
             (same as input timestamps), 'nanotime' (simulated TCSPC nanotime)
             and 'stream' (color or the photon).
     """
-    print(f'gamma = {gamma}, lk = {lk}, dir_ex_t = {dir_ex_t}')
     if rg is None:
         rg = np.random.RandomState()
     d = dd.distribution(dd_params)  # validates the distance-distribution parameters
@@ -208,12 +198,9 @@ def recolor_burstsph_OU_gauss_R(
         R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
             ts, δt, k_D, D_fract, R0, *params,
             rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-
     burstsph = _make_burstsph_df(timestamps, T_ph, R_ph, S_ph)
-    print('- Coloring photons ... ', flush=True, end='')
     burstsph = _color_photons(burstsph, R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
     burstsph = _add_acceptor_nanotime(burstsph, τ_A, A_fract, rg)
-    print('DONE', flush=True)
     return burstsph
 
 

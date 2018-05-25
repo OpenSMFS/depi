@@ -7,6 +7,8 @@ from randomgen import RandomGenerator, Xoroshiro128
 import depi_ref
 import depi_cy
 import fret
+import depi
+import dist_distrib as dd
 
 
 def load_burstsph():
@@ -296,3 +298,66 @@ def test_2states_vs_Nstates():
     assert np.allclose(R_php, R_ph)
     assert np.allclose(T_php, T_ph)
     assert np.allclose(S_php, S_ph)
+
+
+def test_corrections():
+    N = 50000
+    burstsph = load_burstsph().iloc[:N]
+    ns = nm = 1.
+    params = dict(
+        name='gaussian',
+        # physical parameters
+        R_mean=[6.37 * nm, 4 * ns],
+        R_sigma=[0.01 * nm] * 2,
+        R0=6. * nm,
+        τ_relax=[200 * ns] * 2,
+        τ_D=[3.8 * ns, 1 * ns],
+        D_fract=[0.5, 0.5],
+        τ_A=4 * ns,
+        k_s=[1, 1],
+        # simulation parameters
+        δt=1e-2 * ns,
+        ndt=10,
+        α=0.1,
+        gamma=2,
+        lk=0.3,
+        dir_ex_t=0.4,
+    )
+    # 2-states Gaussian
+    rg = RandomGenerator(Xoroshiro128(1))
+    burstsph_sim = depi.recolor_burstsph(burstsph.timestamp, rg=rg, **params)
+    E_corr = fret.E_from_dist(np.array(params['R_mean']), R0=params['R0'])
+    state0 = burstsph_sim.state == 0
+    state1 = burstsph_sim.state == 1
+    FA = burstsph_sim.stream == 'DexAem'
+    Eraw0 = (FA & state0).sum() / state0.sum()
+    Eraw1 = (FA & state1).sum() / state1.sum()
+    Eraw = np.array([Eraw0, Eraw1])
+    Eraw2 = fret.uncorrect_E_gamma_leak_dir(E_corr, params['gamma'], params['lk'],
+                                            dir_ex_t=params['dir_ex_t'])
+    assert np.allclose(Eraw, Eraw2, atol=5e-3, rtol=0)
+
+    # 1-state Gaussian
+    params.update(R_mean=params['R_mean'][0], R_sigma=params['R_sigma'][0],
+                  τ_relax=params['τ_relax'][0])
+    burstsph_sim = depi.recolor_burstsph(burstsph.timestamp, rg=rg, **params)
+    E_corr = fret.E_from_dist(np.array(params['R_mean']), R0=params['R0'])
+    FA = (burstsph_sim.stream == 'DexAem').sum()
+    Eraw = FA / burstsph_sim.shape[0]
+    Eraw2 = fret.uncorrect_E_gamma_leak_dir(E_corr, params['gamma'], params['lk'],
+                                            dir_ex_t=params['dir_ex_t'])
+    assert np.allclose(Eraw, Eraw2, atol=5e-3, rtol=0)
+
+    # 1-state Radial Gaussian
+    params.update(name='radial_gaussian', mu=4 * nm, sigma=0.01 * nm, offset=1,
+                  du=0.01, u_max=6., dr=0.001)
+    del params['R_mean'], params['R_sigma']
+    d = dd.distribution(params)
+    E_corr = d.mean_E(params['R0'])
+    rg = RandomGenerator(Xoroshiro128(1))
+    burstsph_sim = depi.recolor_burstsph(burstsph.timestamp, rg=rg, **params)
+    FA = (burstsph_sim.stream == 'DexAem').sum()
+    Eraw = FA / burstsph_sim.shape[0]
+    Eraw2 = fret.uncorrect_E_gamma_leak_dir(E_corr, params['gamma'], params['lk'],
+                                            dir_ex_t=params['dir_ex_t'])
+    assert np.allclose(Eraw, Eraw2, atol=5e-3, rtol=0)
