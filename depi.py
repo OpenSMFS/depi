@@ -208,27 +208,36 @@ def recolor_burstsph_OU_gauss_R(
         R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
             ts, δt, k_D, D_fract, R0, *params,
             rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
+
+    burstsph = _make_burstsph_df(timestamps, T_ph, R_ph, S_ph)
     print('- Coloring photons ... ', flush=True, end='')
-    A_em, A_em_nolk, T_ph_dir_ex, lk_ph, dir_ex_ph = _color_photons(
-        R_ph, R0, T_ph=T_ph, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
-    T_ph_complete = _add_acceptor_nanotime(A_em_nolk, T_ph_dir_ex, τ_A, A_fract, rg)
-    print('DONE\n- Making dataframe ...', flush=True, end='')
-    A_em, T_ph_complete,
-    df = _make_burstsph_df(timestamps, T_ph_complete, A_em, R_ph, S_ph, lk_ph, dir_ex_ph)
+    burstsph = _color_photons(burstsph, R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
+    burstsph = _add_acceptor_nanotime(burstsph, τ_A, A_fract, rg)
     print('DONE', flush=True)
-    return df
+    return burstsph
 
 
-def _color_photons(R_ph, R0, T_ph, gamma, lk, dir_ex_t, rg):
+def _make_burstsph_df(timestamps, T_ph, R_ph, S_ph=None):
+    burstsph = pd.DataFrame(timestamps)
+    burstsph['nanotime'] = T_ph
+    burstsph['R_ph'] = R_ph
+    if S_ph is not None:
+        burstsph['state'] = S_ph
+    return burstsph
+
+
+def _color_photons(df, R0, gamma, lk, dir_ex_t, rg):
     # Color photons (either D or A)
-    num_ph = len(R_ph)
-    E = fret.E_from_dist(R_ph, R0)
+    num_ph = df.shape[0]
+    E = fret.E_from_dist(df.R_ph, R0)
     Eraw = fret.uncorrect_E_gamma_leak_dir(E, gamma=gamma, leakage=lk, dir_ex_t=dir_ex_t)
     A_em = rg.binomial(1, p=Eraw, size=num_ph).astype(bool)
     D_em = ~A_em
     NA = A_em.sum()
     ND = A_em.size - NA
     assert D_em.sum() == ND
+    df['A_ch'] = A_em
+    df['stream'] = pd.Categorical.from_codes(A_em, categories=["DexDem", "DexAem"])
     # These values are shot-noise free
     ND_theor = num_ph * (1 - Eraw)
     NA_theor = num_ph * Eraw
@@ -240,58 +249,41 @@ def _color_photons(R_ph, R0, T_ph, gamma, lk, dir_ex_t, rg):
     leaked_photons = rg.binomial(1, p=fract_lk_ph, size=NA).astype(bool)
     A_em_nolk = A_em.copy()
     A_em_nolk[A_em] = ~leaked_photons
-    lk_ph = np.zeros_like(A_em)
-    lk_ph[A_em] = leaked_photons
-    assert lk_ph.sum() == leaked_photons.sum(), f'{lk_ph.sum()}, {leaked_photons.sum()}'
+    df['leak_ph'] = False
+    df.loc[A_em, 'leak_ph'] = leaked_photons
+    assert df.leak_ph.sum() == leaked_photons.sum(), f'{df.leak_ph.sum()}, {leaked_photons.sum()}'
 
     # Assign A direct excitation photons
     Lk = leaked_photons.sum()
-    nd = ND_theor[A_em * (~lk_ph)]
-    na_raw = NA_theor[A_em * (~lk_ph)]
+    A_em_nolk = A_em & (~df.leak_ph)
+    nd = ND_theor[A_em_nolk]
+    na_raw = NA_theor[A_em_nolk]
     na = (na_raw - dir_ex_t * gamma * nd - Lk) / (1 + dir_ex_t)
     fract_dir_ex_ph = dir_ex_t * (gamma * nd + na) / (na_raw - Lk)
     assert fract_dir_ex_ph.size == NA - leaked_photons.sum()
     dir_ex_photons = rg.binomial(1, p=fract_dir_ex_ph,
                                  size=(NA - leaked_photons.sum())).astype(bool)
-    print('Dir ex unique values:', np.unique(dir_ex_photons))
-    dir_ex_ph = np.zeros_like(A_em)
-    dir_ex_ph[A_em * (~lk_ph)] = dir_ex_photons
-    T_ph_dir_ex = T_ph.copy()
-    T_ph_dir_ex[dir_ex_ph] = 0
-    assert dir_ex_ph.sum() == dir_ex_photons.sum(), f'{dir_ex_ph.sum()}, {dir_ex_photons.sum()}'
-    assert (T_ph_dir_ex[dir_ex_ph] == 0).all(), f'{(T_ph_dir_ex[dir_ex_ph] == 0).sum()}'
-    assert A_em[lk_ph].all()
-    assert A_em[dir_ex_ph].all()
-    return A_em, A_em_nolk, T_ph_dir_ex, lk_ph, dir_ex_ph
+    num_dir_ex_ph = dir_ex_photons.sum()
+    df['dir_ex_ph'] = False
+    df.loc[A_em_nolk, 'dir_ex_ph'] = dir_ex_photons
+    nanot_dir_ex = df.nanotime.copy()
+    nanot_dir_ex[df.dir_ex_ph] = 0
+    df.nanotime = nanot_dir_ex
+    assert df.dir_ex_ph.sum() == num_dir_ex_ph, f'{df.dir_ex_ph.sum()}, {num_dir_ex_ph}'
+    assert A_em[df.leak_ph].all()
+    assert A_em[df.dir_ex_ph].all()
+    return df
 
 
-def _add_acceptor_nanotime(A_em, T_ph, τ_A, A_fract, rg):
-    A_mask = A_em.view(bool)
-    T_ph = np.asfarray(T_ph)
+def _add_acceptor_nanotime(df, τ_A, A_fract, rg):
+    A_mask = df.A_ch & ~df.leak_ph
     if np.size(τ_A) == 1:
-        # Add exponentially distributed lifetimes to A nanotimes
-        T_ph[A_mask] += rg.exponential(scale=τ_A, size=A_mask.sum())
+        # Add A lifetimes to A nanotimes
+        df.loc[A_mask, 'nanotime'] += rg.exponential(scale=τ_A, size=A_mask.sum())
     else:
         num_A_comps = len(τ_A)
-        A_index = np.nonzero(A_mask)[0]
-        components = np.random.choice(num_A_comps, size=A_index.size, p=A_fract)
+        components = np.random.choice(num_A_comps, size=A_mask.sum(), p=A_fract)
         for i, τ_A_i in enumerate(τ_A):
-            comp_i = A_index[components == i]
-            T_ph[comp_i] += rg.exponential(scale=τ_A_i, size=comp_i.size)
-    return T_ph
-
-
-def _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph, lk_ph, dir_ex_ph):
-    burstsph_sim = pd.DataFrame(timestamps)
-    burstsph_sim['nanotime'] = T_ph
-    burstsph_sim['stream'] = (
-        pd.Categorical.from_codes(A_em, categories=["DexDem", "DexAem"]))
-    burstsph_sim['R_ph'] = R_ph
-    if S_ph is not None:
-        burstsph_sim['state'] = S_ph
-    burstsph_sim['leak_ph'] = lk_ph
-    burstsph_sim['dir_ex_ph'] = dir_ex_ph
-    return burstsph_sim
 
 
 #
@@ -571,3 +563,9 @@ def sim_DA_from_timestamps2_p2_Nstates(timestamps, dt_ref, k_D, R0, R_mean,
         # Save state for current photon
         S_ph[iph] = state
     return A_ph, R_ph, T_ph, S_ph
+            df.nanotime.loc[comp_i] += rg.exponential(scale=τ_A_i, size=comp_i.size)
+            # Add A lifetimes to nanotimes for component i
+            comp_i = A_mask.copy()
+            comp_i.loc[A_mask] = (components == i)
+            df.loc[comp_i, 'nanotime'] += rg.exponential(scale=τ_A_i, size=comp_i.sum())
+    return df
