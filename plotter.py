@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import seaborn as sns
 from IPython.display import display
-import depi
 import dist_distrib as dd
+import fret
 
 
 def mpl_text_1state(params, E_μ, show_τ_relax=True, space='nm', time='s'):
@@ -23,7 +23,7 @@ def mpl_text_1state(params, E_μ, show_τ_relax=True, space='nm', time='s'):
 
 def plot_text_1state(ax, x, y, params, show_τ_relax=True, **text_kws):
     p = params
-    E_μ = depi.mean_E_from_gauss_PoR(p['R_mean'][0], p['R_sigma'][0], p['R0'])
+    E_μ = fret.mean_E_from_gauss_PoR(p['R_mean'][0], p['R_sigma'][0], p['R0'])
     text_kws_used = dict(transform=ax.transAxes, va='top')
     text_kws_used.update(**text_kws)
     text = mpl_text_1state(params, E_μ, show_τ_relax=show_τ_relax)
@@ -46,10 +46,10 @@ def plot_E_sim(burstsph_sim, params, E=None, ax=None, legend=True):
     if ax is None:
         _, ax = plt.subplots()
     if E is None:
-        E = depi.calc_E_burst(burstsph_sim)
+        E = fret.calc_E_burst(burstsph_sim)
     bins = np.arange(-0.1, 1.1, 0.02)
     R0 = params['R0']
-    E_ph = depi.E_from_dist(burstsph_sim.R_ph, R0)
+    E_ph = fret.E_from_dist(burstsph_sim.R_ph, R0)
     E_burst = E_ph.groupby('burst').mean()
     ax.hist([], histtype='step', lw=1.2, color='k',
             label='E per ph (no bursts, y-axis A.U.)')
@@ -63,7 +63,7 @@ def plot_E_sim(burstsph_sim, params, E=None, ax=None, legend=True):
         R_mean = np.atleast_1d(params['R_mean'])
         R_sigma = np.atleast_1d(params['R_sigma'])
         for i, (R_m, R_s) in enumerate(zip(R_mean, R_sigma)):
-            E_μ = depi.mean_E_from_gauss_PoR(R_m, R_s, R0)
+            E_μ = fret.mean_E_from_gauss_PoR(R_m, R_s, R0)
             ax.axvline(E_μ, ls='--', color='k', label=f'state{i}')
     #ax.set_xlabel('E')
     if legend:
@@ -121,10 +121,10 @@ def plot_E_tau_rel_series(relax_dict, cmap=None, axes=None, colors=None,
         bph = p['bph']
         params = p['params']
         R0 = params['R0']
-        E = depi.calc_E_burst(bph)
-        E_μ = depi.mean_E_from_gauss_PoR(params['R_mean'][0], params['R_sigma'][0], R0)
-        #E_mode = depi.E_from_dist(params['R_mean'][0], R0)
-        E_ph = depi.E_from_dist(bph.R_ph, R0)
+        E = fret.calc_E_burst(bph)
+        E_μ = fret.mean_E_from_gauss_PoR(params['R_mean'][0], params['R_sigma'][0], R0)
+        #E_mode = fret.E_from_dist(params['R_mean'][0], R0)
+        E_ph = fret.E_from_dist(bph.R_ph, R0)
         #E_burst = E_ph.groupby('burst').mean()
         hist_kws = dict(histtype='stepfilled', color=color,
                         label=f'{τ_relax:,} ns', bins=bins)
@@ -176,7 +176,7 @@ def plot_E_R_pdf(params, ax=None, which='ER', **kws):
     R_mean = params['R_mean']
     R_sigma = params['R_sigma']
     R_samples = np.random.randn(500000) * R_sigma + R_mean
-    E_samples = depi.E_from_dist(R_samples, R0)
+    E_samples = fret.E_from_dist(R_samples, R0)
     style = dict(color='k', lw=2, histtype='step', density=True)
     style.update(kws)
     if ax is None:
