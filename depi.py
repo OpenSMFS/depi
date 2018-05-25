@@ -48,6 +48,60 @@ def recolor_burstsph(
         timestamps, *, R0, τ_relax, δt, τ_D, τ_A, D_fract=1., A_fract=1.,
         gamma=1.0, lk=0., dir_ex_t=0., rg=None, chunk_size=1000, α=0.05, ndt=10,
         **dd_model):
+    """Recolor burst photons with Ornstein–Uhlenbeck D-A distance diffusion.
+
+    Simulate D-A distances diffusing with a Gaussian or non-Gaussian distance
+    distribution using an Ornstein–Uhlenbeck (OU) process with relaxation
+    time `τ_relax`.
+    Each input timestamp is the D excitation time. The D de-excitation
+    happens either via D radiative emission (`τ_D`) or via FRET to A
+    (distance dependent). The parameter `δt` is the time-step of the
+    D de-excitation simulation which takes into account the D-A diffusion.
+    When `τ_relax` is comparable or smaller than `τ_D`, the resulting FRET
+    histogram is biased toward higher FRET values, a phenomenon known
+    as diffusion-enhanced FRET (Beechem-Haas BJ1989).
+
+    The input dictionary `dd_model` sets the distance distribution model.
+    This dictionary have a key "name" which should be one of the strings:
+    'gaussian', 'wlc', 'gaussian_chain', 'radial_gaussian'.
+    Multi-state models can be specified when the distance distribution
+    paramenters are arrays instead of scalars. In this case also `τ_relax`
+    needs to be an array.
+
+    The D and A fluorescence decays can be single of multi-exponential.
+    When `τ_D` or `τ_A` are scalars the decays are mono-exponential.
+    When `τ_D` or `τ_A` are arrays the argument `D_fract` and `A_fract`
+    dictate the fractions of the different exponential components.
+
+    Arguments:
+        timestamps (pandas.Series): macrotimes of photons to be recolored.
+            The index needs to have two levels: ('burst', 'ph').
+        R0 (float): Förster radious of the D-A pair
+        τ_relax (float): relaxation time of the OU process
+        δt (float): nanotime (TCSPC) resolution, same units as
+            `timestamps`. The actual time-bin `dt` may be smaller than `δt`
+            because of a dependence on `τ_relax` (see argument `ndt`).
+        α (float): sets the threshold above which switching
+            from approximated probability to a CDF one.
+        ndt (float): sets the max allowed time-step `δt`, potentially overriding
+            the user supplied `δt`. If `τ_relax < ndt * δt`,
+            then `δt` is reduced to `τ_relax / ndt`. The
+            `δt` adjustment depends only on the input argument `τ_relax`
+            and is performed only once at the beginning of the simulation.
+            To avoid any `δt` adjustment, use `ndt = 0`.
+        rg (None or RandomGenerator): random number generator object,
+            usually `numpy.random.RandomState()`. If None, use
+            `numpy.random.RandomState()` with no seed. Use this to pass
+            an RNG initialized with a specific seed or to choose a
+            RNG other than numpy's default Mersen Twister MT19937.
+        chunk_size (int): request random numbers in chunks of this size
+
+    Returns:
+        burstsph (pandas.DataFrame): recolored photon data. Columns include: 'timestamp'
+            (same as input timestamps); 'nanotime' (simulated TCSPC nanotimes);
+            'stream' (color or the photon); 'R_ph' the D-A distance at
+            de-excitation time; 'state' the state for each photon.
+    """
     name = dd_model['name'].lower()
     dd.assert_valid_model_name(name)
     if name.startswith('gauss'):
@@ -119,59 +173,7 @@ def recolor_burstsph_OU_gauss_R(
         timestamps, *, R0, gamma, lk, dir_ex_t, τ_relax, dd_params, δt,
         τ_D, τ_A, D_fract=1., A_fract=1.,
         rg=None, chunk_size=1000, α=0.05, ndt=10, cdf=True):
-    """Recolor burst photons with Ornstein–Uhlenbeck D-A distance diffusion.
-
-    Simulate Gaussian-distributed D-A distances diffusing according
-    to an Ornstein–Uhlenbeck (OU) process with relaxation time `τ_relax`.
-    Each input timestamp is the D excitation time. The D de-excitation
-    happens either via D radiative emission (`τ_D`) or via FRET to A
-    (distance dependent). The parameter `δt` is the time-step of the
-    D de-excitation simulation which takes into account the D-A diffusion.
-    When `τ_relax` is comparable or smaller than `τ_D`, the resulting FRET
-    histogram is biased toward higher FRET values, a phenomenon known
-    as diffusion-enhanced FRET (Beechem-Haas BJ1989).
-
-    Arguments:
-        timestamps (pandas.Series): macrotimes of photons to be recolored.
-            The index needs to have two levels: ('burst', 'ph').
-        R0 (float): Förster radious of the D-A pair
-        R_mean (float): mean D-A distance
-        R_sigma (float): standard deviation of the distance distribution
-        τ_relax (float): relaxation time of the OU process
-        δt (float): nanotime (TCSPC) resolution, same units as
-            `timestamps`. The actual time-bin `dt` may be smaller than `δt`
-            because of a dependence on `τ_relax` (see argument `ndt`).
-            When `cdf = False`, `dt` may be also adaptively reduced
-            (see arguments `α` and `cdf`).
-        rg (None or RandomGenerator): random number generator object,
-            usually `numpy.random.RandomState()`. If None, use
-            `numpy.random.RandomState()` with no seed. Use this to pass
-            an RNG initialized with a specific seed or to choose a
-            RNG other than numpy's default Mersen Twister MT19937.
-        chunk_size (int): request random numbers in chunks of this size
-        α (float): if `cdf=True`, sets the threshold above which switching
-            from approximated probability to a CDF one.
-            If `cdf=False`, sets the adaptive time-step `dt` as a fraction `α`
-            of the Donor excited-state lifetime `τ_deexcitation`.
-            In the latter case, `dt` is computed at each time-step as
-            `min(α * τ_deexcitation, δt)` and should be small enough
-            so that `δt / τ_deexcitation` is a good approximation of the
-            probability of D de-excitation in the current time-bin δt.
-        ndt (float): sets the max time-step `δt`, potentially overriding
-            the user supplied `δt`. If `τ_relax < ndt * δt`,
-            then `δt` is reduced to `τ_relax / ndt`. The
-            `δt` adjustment depends only on the input argument `τ_relax`
-            and is performed only one time at the beginning of the simulation.
-            To avoid any `δt` adjustment, use `ndt = 0`.
-        cdf (bool): if True use a fixed `dt` and the exponential CDF to
-            compute the D de-excitatation probability in the current time bin.
-            If False, use the approximation `p = k_emission * dt`, with `dt`
-            adaptively chosen so that `p <= α`.
-
-    Returns:
-        burstsph (pandas.DataFrame): DataFrame with 3 columns: 'timestamp'
-            (same as input timestamps), 'nanotime' (simulated TCSPC nanotime)
-            and 'stream' (color or the photon).
+    """Recoloring simulation with Gaussian distance distribution.
     """
     if rg is None:
         rg = np.random.RandomState()
