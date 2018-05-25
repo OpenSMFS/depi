@@ -7,6 +7,7 @@ from randomgen import RandomGenerator, Xoroshiro128
 import depi
 import depi_ref
 import depi_cy
+import fret
 
 
 def load_burstsph():
@@ -38,16 +39,15 @@ def test_py_vs_cy():
     A_em, R_ph, T_ph = depi_ref.sim_DA_from_timestamps(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg)
     rg = RandomGenerator(Xoroshiro128(1))
-    A_emc, R_phc, T_phc = depi_cy.sim_DA_from_timestamps_cy(
+    R_phc, T_phc = depi_cy.sim_DA_from_timestamps_cy(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg)
-    assert all([np.allclose(A_em, A_emc),
-                np.allclose(R_ph, R_phc),
+    assert all([np.allclose(R_ph, R_phc),
                 np.allclose(T_ph, T_phc)])
     # Test R from nanotime vs R_mean
-    R_est = depi.dist_from_E(1 - T_ph.mean() / τ_D, R0)
+    R_est = fret.dist_from_E(1 - T_ph.mean() / τ_D, R0)
     assert abs(R_est - R_mean) < 0.12 * nm
     # Test E from nanotime vs ratiometric vs from P(R)
-    E_PoR = depi.mean_E_from_gauss_PoR(R_mean, R_sigma, R0)
+    E_PoR = fret.mean_E_from_gauss_PoR(R_mean, R_sigma, R0)
     E_ratio = A_em.sum() / A_em.size
     E_lifetime = 1 - T_ph.mean() / τ_D
     assert abs(E_PoR - E_ratio) < 0.03
@@ -57,16 +57,15 @@ def test_py_vs_cy():
     A_em, R_ph, T_ph = depi_ref.sim_DA_from_timestamps2_p(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg)
     rg = RandomGenerator(Xoroshiro128(1))
-    A_emc, R_phc, T_phc = depi_cy.sim_DA_from_timestamps2_p_cy(
+    R_phc, T_phc = depi_cy.sim_DA_from_timestamps2_p_cy(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg)
-    assert all([np.allclose(A_em, A_emc),
-                np.allclose(R_ph, R_phc),
+    assert all([np.allclose(R_ph, R_phc),
                 np.allclose(T_ph, T_phc)])
     # Test R from nanotime vs R_mean
-    R_est = depi.dist_from_E(1 - T_ph.mean() / τ_D, R0)
+    R_est = fret.dist_from_E(1 - T_ph.mean() / τ_D, R0)
     assert abs(R_est - R_mean) < 0.12 * nm
     # Test E from nanotime vs ratiometric vs from P(R)
-    E_PoR = depi.mean_E_from_gauss_PoR(R_mean, R_sigma, R0)
+    E_PoR = fret.mean_E_from_gauss_PoR(R_mean, R_sigma, R0)
     E_ratio = A_em.sum() / A_em.size
     E_lifetime = 1 - T_ph.mean() / τ_D
     assert abs(E_PoR - E_ratio) < 0.03
@@ -143,11 +142,11 @@ def test_dt_tollerance():
                     not np.allclose(R_ph, R_php2),
                     not np.allclose(T_ph, T_php2)])
     # Test R from nanotime vs R_mean
-    R_a = depi.dist_from_E(1 - T_ph.mean() / τ_D, R0)
-    R_c = depi.dist_from_E(1 - T_php.mean() / τ_D, R0)
+    R_a = fret.dist_from_E(1 - T_ph.mean() / τ_D, R0)
+    R_c = fret.dist_from_E(1 - T_php.mean() / τ_D, R0)
     assert abs(R_c - R_a) < 0.12 * nm
     # Test E from nanotime vs ratiometric vs from P(R)
-    E_PoR = depi.mean_E_from_gauss_PoR(R_mean, R_sigma, R0)
+    E_PoR = fret.mean_E_from_gauss_PoR(R_mean, R_sigma, R0)
     E_ratio_a = A_em.sum() / A_em.size
     E_lifetime_a = 1 - T_ph.mean() / τ_D
     E_ratio_c = A_emp.sum() / A_emp.size
@@ -181,7 +180,7 @@ def test_cdf_vs_dt_python():
     A_em, R_ph, T_ph = depi_ref.sim_DA_from_timestamps2_p(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg, ndt=0, alpha=np.inf)
     rg = RandomGenerator(Xoroshiro128(1))
-    A_emp, R_php, T_php = depi.sim_DA_from_timestamps2_p2(
+    A_emp, R_php, T_php = depi_ref.sim_DA_from_timestamps2_p2(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg, ndt=0, alpha=np.inf)
     assert not all([not np.allclose(A_em, A_emp),
                     not np.allclose(R_ph, R_php),
@@ -205,14 +204,13 @@ def test_cdf_vs_dt_cy():
     D_fract = np.atleast_1d(1.)
     ts = burstsph.timestamp.values[:100000]
     rg = RandomGenerator(Xoroshiro128(1))
-    A_em, R_ph, T_ph = depi_cy.sim_DA_from_timestamps2_p_cy(
+    R_ph, T_ph = depi_cy.sim_DA_from_timestamps2_p_cy(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, rg, ndt=0, alpha=np.inf)
     rg = RandomGenerator(Xoroshiro128(1))
-    A_emp, R_php, T_php = depi_cy.sim_DA_from_timestamps2_p2_cy(
+    R_php, T_php = depi_cy.sim_DA_from_timestamps2_p2_cy(
         ts, δt, np.atleast_1d(k_D), D_fract, R0, R_mean, R_sigma, τ_relax, rg=rg,
         ndt=0, alpha=np.inf)
-    assert not all([not np.allclose(A_em, A_emp),
-                    not np.allclose(R_ph, R_php),
+    assert not all([not np.allclose(R_ph, R_php),
                     not np.allclose(T_ph, T_php)])
 
 
@@ -233,15 +231,14 @@ def test_2states_py_vs_cy():
     ts = burstsph.timestamp.values[:10000]
 
     rg = RandomGenerator(Xoroshiro128(1))
-    A_em, R_ph, T_ph, S_ph = depi.sim_DA_from_timestamps2_p2_2states(
+    A_em, R_ph, T_ph, S_ph = depi_ref.sim_DA_from_timestamps2_p2_2states(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, k_s, rg=rg)
     rg = RandomGenerator(Xoroshiro128(1))
-    A_emp, R_php, T_php, S_php = depi_cy.sim_DA_from_timestamps2_p2_2states_cy(
+    R_php, T_php, S_php = depi_cy.sim_DA_from_timestamps2_p2_2states_cy(
         ts, δt, np.atleast_1d(k_D), D_fract, R0, R_mean, R_sigma, τ_relax, k_s, rg=rg, ndt=0)
     assert np.allclose(R_php, R_ph)
     assert np.allclose(T_php, T_ph)
     assert np.allclose(S_php, S_ph)
-    assert np.allclose(A_emp, A_em)
 
 
 def test_Nstates_py_vs_cy():
@@ -262,15 +259,14 @@ def test_Nstates_py_vs_cy():
     D_fract = np.atleast_1d(1.)
     ts = burstsph.timestamp.values[:5000]
     rg = RandomGenerator(Xoroshiro128(1))
-    A_em, R_ph, T_ph, S_ph = depi.sim_DA_from_timestamps2_p2_Nstates(
+    A_em, R_ph, T_ph, S_ph = depi_ref.sim_DA_from_timestamps2_p2_Nstates(
         ts, δt, k_D, R0, R_mean, R_sigma, τ_relax, K_s, rg=rg)
     rg = RandomGenerator(Xoroshiro128(1))
-    A_emp, R_php, T_php, S_php = depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy(
+    R_php, T_php, S_php = depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy(
         ts, δt, np.atleast_1d(k_D), D_fract, R0, R_mean, R_sigma, τ_relax, K_s, rg=rg, ndt=0)
     assert np.allclose(R_php, R_ph)
     assert np.allclose(T_php, T_ph)
     assert np.allclose(S_php, S_ph)
-    assert np.allclose(A_emp, A_em)
 
 
 def test_2states_vs_Nstates():
@@ -293,12 +289,11 @@ def test_2states_vs_Nstates():
     ts = burstsph.timestamp.values[:10000]
 
     rg = RandomGenerator(Xoroshiro128(1))
-    A_em, R_ph, T_ph, S_ph = depi_cy.sim_DA_from_timestamps2_p2_2states_cy(
+    R_ph, T_ph, S_ph = depi_cy.sim_DA_from_timestamps2_p2_2states_cy(
         ts, δt, np.atleast_1d(k_D), D_fract, R0, R_mean, R_sigma, τ_relax, k_s, rg=rg)
     rg = RandomGenerator(Xoroshiro128(1))
-    A_emp, R_php, T_php, S_php = depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy(
+    R_php, T_php, S_php = depi_cy.sim_DA_from_timestamps2_p2_Nstates_cy(
         ts, δt, np.atleast_1d(k_D), D_fract, R0, R_mean, R_sigma, τ_relax, K_s, rg=rg, ndt=0)
     assert np.allclose(R_php, R_ph)
     assert np.allclose(T_php, T_ph)
     assert np.allclose(S_php, S_ph)
-    assert np.allclose(A_emp, A_em)
