@@ -107,12 +107,20 @@ class BaseDistribution:
         display(HTML(f'<h3>Distance Model: "{self.name} {state}" </h3>'),
                 Math(self._latex_pdf), HTML(self._html_params()))
 
-    def mean_E(self, R0):
-        """Mean E from integration of the distance distribution
+    def mean_E(self, R0, dr=0.01):
+        """Mean E for each state from integration of the distance distribution
         """
-        R_axis, R_pdf = self.get_pdf()
+        R_axis = self.get_r_axis(dr)
         E_from_R = fret.E_from_dist(R_axis, R0)
-        E_mean_integral = np.trapz(E_from_R * R_pdf, R_axis)
+        if self.num_states == 1:
+            R_pdf = self.pdf(R_axis, **self.params)
+            E_mean_integral = np.trapz(E_from_R * R_pdf, R_axis)
+        else:
+            E_mean_integral = np.zeros(self.num_states)
+            for i in range(self.num_states):
+                p = {k: v[i] for k, v in self.params.items()}
+                R_pdf = self.pdf(R_axis, **p)
+                E_mean_integral[i] = np.trapz(E_from_R * R_pdf, R_axis)
         return E_mean_integral
 
 

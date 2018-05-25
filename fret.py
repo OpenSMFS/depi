@@ -50,6 +50,7 @@ def uncorrect_E_gamma_leak_dir(E, gamma=1, leakage=0, dir_ex_t=0):
 def E_from_dist(x, R0):
     """Return E computed from D-A distance and R0
     """
+    x = np.asarray(x)
     E = 1 / (1 + (x / R0)**6)
     if not np.isscalar(x):
         E[x < 0] = 1
@@ -61,6 +62,7 @@ def E_from_dist(x, R0):
 def dist_from_E(E, R0):
     """Return the D-A distance for a give E and R0
     """
+    E = np.asarray(E)
     return R0 * (1 / E - 1)**(1 / 6)
 
 
