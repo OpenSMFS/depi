@@ -4,7 +4,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from randomgen import RandomGenerator, Xoroshiro128
-import depi
 import depi_ref
 import depi_cy
 import fret
