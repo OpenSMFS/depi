@@ -20,7 +20,8 @@ def correct_E_gamma_leak_dir(Eraw, gamma=1, leakage=0, dir_ex_t=0):
     Returns
         Corrected FRET effciency
     """
-    Eraw = np.asarray(Eraw)
+    if not hasattr(Eraw, '__array__'):
+        Eraw = np.asarray(Eraw)
     return ((Eraw * (leakage + dir_ex_t * gamma + 1) - leakage - dir_ex_t * gamma)
             / (Eraw * (leakage - gamma + 1) - leakage + gamma))
 
@@ -42,19 +43,21 @@ def uncorrect_E_gamma_leak_dir(E, gamma=1, leakage=0, dir_ex_t=0):
     Returns
         Proximity ratio (reverses gamma, leakage and direct excitation)
     """
-    E = np.asarray(E)
+    if not hasattr(E, '__array__'):
+        E = np.asarray(E)
     return ((E * (gamma - leakage) + leakage + dir_ex_t * gamma)
             / (E * (gamma - leakage - 1) + leakage + dir_ex_t * gamma + 1))
 
 
-def E_from_dist(x, R0):
+def E_from_dist(r, R0):
     """Return E computed from D-A distance and R0
     """
-    x = np.asarray(x)
-    E = 1 / (1 + (x / R0)**6)
-    if x.ndim > 0:
-        E[x < 0] = 1
-    elif x < 0:
+    if not hasattr(r, '__array__'):
+        r = np.asarray(r)
+    E = 1 / (1 + (r / R0)**6)
+    if r.ndim > 0:
+        E[r < 0] = 1
+    elif r < 0:
         E = 0
     return E
 
@@ -62,7 +65,8 @@ def E_from_dist(x, R0):
 def dist_from_E(E, R0):
     """Return the D-A distance for a give E and R0
     """
-    E = np.asarray(E)
+    if not hasattr(E, '__array__'):
+        E = np.asarray(E)
     return R0 * (1 / E - 1)**(1 / 6)
 
 
