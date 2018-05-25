@@ -171,7 +171,6 @@ def recolor_burstsph_OU_dist_distrib(
     print(f'gamma = {gamma}, lk = {lk}, dir_ex_t = {dir_ex_t}')
     if rg is None:
         rg = np.random.RandomState()
-    gamma_lk = gamma / (1 + lk)
     d = dd.distribution(dd_params)  # validates the distance-distribution parameters
     _check_args(τ_relax, ndt, α, d.num_states)
     k_D, D_fract = _get_multi_lifetime_components(τ_D, D_fract, 'D')
@@ -190,9 +189,9 @@ def recolor_burstsph_OU_dist_distrib(
         r_dd, idx_offset_dd = dd.get_r_dist_distrib(
             du=du, u_max=u_max, dr=dr, dd_params=dd_params)
         # Run the 1-state recoloring simulation
-        A_em, R_ph, T_ph = depi_cy.sim_DA_from_timestamps2_p2_dist_cy(
+        R_ph, T_ph = depi_cy.sim_DA_from_timestamps2_p2_dist_cy(
             ts, δt, k_D, D_fract, R0, p['τ_relax'], r_dd, idx_offset_dd, du,
-            gamma=gamma_lk, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
+            rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     else:
         funcs = {1: depi_cy.sim_DA_from_timestamps2_p2_2states_dist_cy,
                  2: depi_cy.sim_DA_from_timestamps2_p2_Nstates_dist_cy}
@@ -208,12 +207,18 @@ def recolor_burstsph_OU_dist_distrib(
         r_dd = np.vstack(r_dd_list)
         idx_offset_dd = np.array(idx_offset_list, dtype='int64')
         # Run the multi-state recoloring simulation
-        A_em, R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
+        R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
             ts, δt, k_D, D_fract, R0, np.asfarray(τ_relax), d.k_s, r_dd, idx_offset_dd, du,
-            gamma=gamma_lk, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-    A_em_lk, T_ph_dir_ex = _compute_D_leakage_A_dir_ex(A_em, T_ph, gamma, lk, dir_ex_t, rg)
-    T_ph_complete = _calc_T_ph_with_acceptor(A_em, T_ph_dir_ex, τ_A, A_fract, rg)
-    return _make_burstsph_df(timestamps, T_ph_complete, A_em_lk, R_ph, S_ph)
+            rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
+    print('- Coloring photons ... ', flush=True, end='')
+    A_em, A_em_nolk, T_ph_dir_ex, lk_ph, dir_ex_ph = _color_photons(
+        R_ph, R0, T_ph=T_ph, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
+    T_ph_complete = _add_acceptor_nanotime(A_em_nolk, T_ph_dir_ex, τ_A, A_fract, rg)
+    print('DONE\n- Making dataframe ...', flush=True, end='')
+    A_em, T_ph_complete,
+    df = _make_burstsph_df(timestamps, T_ph_complete, A_em, R_ph, S_ph, lk_ph, dir_ex_ph)
+    print('DONE', flush=True)
+    return df
 
 
 def recolor_burstsph_OU_gauss_R(
@@ -288,7 +293,7 @@ def recolor_burstsph_OU_gauss_R(
             func = depi_cy.sim_DA_from_timestamps2_p2_cy
         else:
             func = depi_cy.sim_DA_from_timestamps2_p_cy
-        A_em, R_ph, T_ph = func(
+        R_ph, T_ph = func(
             ts, δt, k_D, D_fract, R0, dd_params['R_mean'], dd_params['R_sigma'],
             τ_relax, rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
     else:
@@ -297,22 +302,21 @@ def recolor_burstsph_OU_gauss_R(
         params = (np.asfarray(dd_params['R_mean']),
                   np.asfarray(dd_params['R_sigma']),
                   np.asfarray(τ_relax), np.asfarray(d.k_s))
-        A_em, R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
+        R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
             ts, δt, k_D, D_fract, R0, *params,
             rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-    A_em, A_em_nolk, T_ph_dir_ex, lk_ph, dir_ex_ph = _compute_D_leakage_A_dir_ex(
-        R_ph, R0, T_ph=T_ph, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
     print('- Coloring photons ... ', flush=True, end='')
-    T_ph_complete = _calc_T_ph_with_acceptor(A_em_nolk, T_ph_dir_ex, τ_A, A_fract, rg)
+    A_em, A_em_nolk, T_ph_dir_ex, lk_ph, dir_ex_ph = _color_photons(
+        R_ph, R0, T_ph=T_ph, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
+    T_ph_complete = _add_acceptor_nanotime(A_em_nolk, T_ph_dir_ex, τ_A, A_fract, rg)
     print('DONE\n- Making dataframe ...', flush=True, end='')
-    df = _make_burstsph_df(timestamps, T_ph_complete, A_em, R_ph, S_ph)
-    df['leak_ph'] = lk_ph
-    df['dir_ex_ph'] = dir_ex_ph
+    A_em, T_ph_complete,
+    df = _make_burstsph_df(timestamps, T_ph_complete, A_em, R_ph, S_ph, lk_ph, dir_ex_ph)
     print('DONE', flush=True)
     return df
 
 
-def _compute_D_leakage_A_dir_ex(R_ph, R0, T_ph, gamma, lk, dir_ex_t, rg):
+def _color_photons(R_ph, R0, T_ph, gamma, lk, dir_ex_t, rg):
     # Color photons (either D or A)
     num_ph = len(R_ph)
     E = E_from_dist(R_ph, R0)
@@ -331,8 +335,6 @@ def _compute_D_leakage_A_dir_ex(R_ph, R0, T_ph, gamma, lk, dir_ex_t, rg):
     fract_lk_ph = lk * ND_theor[A_em] / NA_theor[A_em]
     assert fract_lk_ph.size == NA
     leaked_photons = rg.binomial(1, p=fract_lk_ph, size=NA).astype(bool)
-    print(f'Fraction leaked: {fract_lk_ph}')
-    print('Leaked ph unique values: ', np.unique(leaked_photons))
     A_em_nolk = A_em.copy()
     A_em_nolk[A_em] = ~leaked_photons
     lk_ph = np.zeros_like(A_em)
@@ -353,7 +355,6 @@ def _compute_D_leakage_A_dir_ex(R_ph, R0, T_ph, gamma, lk, dir_ex_t, rg):
     dir_ex_ph[A_em * (~lk_ph)] = dir_ex_photons
     T_ph_dir_ex = T_ph.copy()
     T_ph_dir_ex[dir_ex_ph] = 0
-    print('Initial zero nanotimes: ', (T_ph == 0).sum())
     assert dir_ex_ph.sum() == dir_ex_photons.sum(), f'{dir_ex_ph.sum()}, {dir_ex_photons.sum()}'
     assert (T_ph_dir_ex[dir_ex_ph] == 0).all(), f'{(T_ph_dir_ex[dir_ex_ph] == 0).sum()}'
     assert A_em[lk_ph].all()
@@ -361,7 +362,7 @@ def _compute_D_leakage_A_dir_ex(R_ph, R0, T_ph, gamma, lk, dir_ex_t, rg):
     return A_em, A_em_nolk, T_ph_dir_ex, lk_ph, dir_ex_ph
 
 
-def _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, A_fract, rg):
+def _add_acceptor_nanotime(A_em, T_ph, τ_A, A_fract, rg):
     A_mask = A_em.view(bool)
     T_ph = np.asfarray(T_ph)
     if np.size(τ_A) == 1:
@@ -377,7 +378,7 @@ def _calc_T_ph_with_acceptor(A_em, T_ph, τ_A, A_fract, rg):
     return T_ph
 
 
-def _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph):
+def _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph, lk_ph, dir_ex_ph):
     burstsph_sim = pd.DataFrame(timestamps)
     burstsph_sim['nanotime'] = T_ph
     burstsph_sim['stream'] = (
@@ -385,6 +386,8 @@ def _make_burstsph_df(timestamps, T_ph, A_em, R_ph, S_ph):
     burstsph_sim['R_ph'] = R_ph
     if S_ph is not None:
         burstsph_sim['state'] = S_ph
+    burstsph_sim['leak_ph'] = lk_ph
+    burstsph_sim['dir_ex_ph'] = dir_ex_ph
     return burstsph_sim
 
 
