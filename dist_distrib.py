@@ -1,7 +1,8 @@
 import numpy as np
 from scipy.special import erf
-import ctmc
 from IPython.display import Math, HTML, display
+import ctmc
+import fret
 
 
 valid_model_names = ('gaussian', 'wlc', 'gaussian_chain', 'radial_gaussian')
@@ -105,6 +106,14 @@ class BaseDistribution:
         state = '1-state' if self.num_states == 1 else f'{self.num_states}-states'
         display(HTML(f'<h3>Distance Model: "{self.name} {state}" </h3>'),
                 Math(self._latex_pdf), HTML(self._html_params()))
+
+    def mean_E(self, R0):
+        """Mean E from integration of the distance distribution
+        """
+        R_axis, R_pdf = self.get_pdf()
+        E_from_R = fret.E_from_dist(R_axis, R0)
+        E_mean_integral = np.trapz(E_from_R * R_pdf, R_axis)
+        return E_mean_integral
 
 
 class Gaussian(BaseDistribution):
