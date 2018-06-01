@@ -271,7 +271,7 @@ def _add_acceptor_nanotime(df, τ_A, A_fract, rg):
         df.loc[A_mask, 'nanotime'] += rg.exponential(scale=τ_A, size=A_mask.sum())
     else:
         num_A_comps = len(τ_A)
-        components = np.random.choice(num_A_comps, size=A_mask.sum(), p=A_fract)
+        components = rg.choice(num_A_comps, size=A_mask.sum(), p=A_fract)
         for i, τ_A_i in enumerate(τ_A):
             # Add A lifetimes to nanotimes for component i
             comp_i = A_mask.copy()
