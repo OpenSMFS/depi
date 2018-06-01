@@ -166,9 +166,12 @@ def recolor_burstsph_OU_dist_distrib(
         R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
             ts, δt, k_D, D_fract, R0, np.asfarray(τ_relax), d.k_s, r_dd, idx_offset_dd, du,
             rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-    burstsph = _make_burstsph_df(timestamps, T_ph, R_ph, S_ph)
+    burstsph_all = _make_burstsph_df(timestamps, T_ph, R_ph, S_ph)
+    burstsph, bg = _select_background(burstsph_all, bg_rate_d=bg_rate_d, bg_rate_a=bg_rate_a,
+                                      ts_unit=ts_unit, tcspc_range=tcspc_range, rg=rg)
     burstsph = _color_photons(burstsph, R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
     burstsph = _add_acceptor_nanotime(burstsph, τ_A, A_fract, rg)
+    burstsph = _merge_ph_and_bg(burstsph_all, burstsph, bg)
     return burstsph
 
 
@@ -235,8 +238,6 @@ def _select_background(df, bg_rate_d, bg_rate_a, ts_unit, tcspc_range, rg):
 
 def _background_per_burst(burst, bg_rate_d, bg_rate_a, ts_unit, rg):
     burst = burst.reset_index('burst', drop=True)
-    assert (np.diff(burst.index.get_level_values('ph')) == 1).all(), 'missing ph'
-    assert burst.index.get_level_values('ph')[-1] == burst.shape[0] - 1, 'missing ph'
     bsize = burst.shape[0]
     bwidth = (burst.iloc[-1] - burst.iloc[0]) * ts_unit
     bg_burst = (bg_rate_d + bg_rate_a) * bwidth
