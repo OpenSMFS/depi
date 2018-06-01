@@ -236,15 +236,13 @@ def _color_photons(df, R0, gamma, lk, dir_ex_t, rg):
     fract_lk_ph = lk * ND_theor[A_em] / NA_theor[A_em]
     assert fract_lk_ph.size == NA
     leaked_photons = rg.binomial(1, p=fract_lk_ph, size=NA).astype(bool)
-    A_em_nolk = A_em.copy()
-    A_em_nolk[A_em] = ~leaked_photons
     df['leak_ph'] = False
     df.loc[A_em, 'leak_ph'] = leaked_photons
+    A_em_nolk = A_em & (~df.leak_ph)
     assert df.leak_ph.sum() == leaked_photons.sum(), f'{df.leak_ph.sum()}, {leaked_photons.sum()}'
 
     # Assign A direct excitation photons
     Lk = leaked_photons.sum()
-    A_em_nolk = A_em & (~df.leak_ph)
     nd = ND_theor[A_em_nolk]
     na_raw = NA_theor[A_em_nolk]
     na = (na_raw - dir_ex_t * gamma * nd - Lk) / (1 + dir_ex_t)
