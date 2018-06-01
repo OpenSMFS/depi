@@ -1,3 +1,4 @@
+from functools import partial
 import numpy as np
 import pandas as pd
 import depi_cy
@@ -46,6 +47,7 @@ def _get_multi_lifetime_components(τ_X, X_fract, label='D'):
 
 def recolor_burstsph(
         timestamps, *, R0, τ_relax, δt, τ_D, τ_A, D_fract=1., A_fract=1.,
+        bg_rate_d=0, bg_rate_a=0, ts_unit=1e-9, tcspc_range=50,
         gamma=1.0, lk=0., dir_ex_t=0., rg=None, chunk_size=1000, α=0.05, ndt=10,
         **dd_model):
     """Recolor burst photons with Ornstein–Uhlenbeck D-A distance diffusion.
@@ -113,12 +115,13 @@ def recolor_burstsph(
     return func(
         timestamps, R0=R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, τ_relax=τ_relax, δt=δt,
         τ_D=τ_D, D_fract=D_fract, τ_A=τ_A, A_fract=A_fract,
+        bg_rate_d=bg_rate_d, bg_rate_a=bg_rate_a, ts_unit=ts_unit, tcspc_range=tcspc_range,
         rg=rg, chunk_size=chunk_size, α=α, ndt=ndt, dd_params=dd_model)
 
 
 def recolor_burstsph_OU_dist_distrib(
         timestamps, *, R0, gamma, lk, dir_ex_t, τ_relax, dd_params, δt,
-        τ_D, τ_A, D_fract=1., A_fract=1.,
+        τ_D, τ_A, D_fract=1., A_fract=1., bg_rate_d, bg_rate_a, ts_unit, tcspc_range,
         rg=None, chunk_size=1000, α=0.05, ndt=10):
     """Recoloring simulation with non-Gaussian distance distribution.
     """
@@ -171,7 +174,7 @@ def recolor_burstsph_OU_dist_distrib(
 
 def recolor_burstsph_OU_gauss_R(
         timestamps, *, R0, gamma, lk, dir_ex_t, τ_relax, dd_params, δt,
-        τ_D, τ_A, D_fract=1., A_fract=1.,
+        τ_D, τ_A, D_fract=1., A_fract=1., bg_rate_d, bg_rate_a, ts_unit, tcspc_range,
         rg=None, chunk_size=1000, α=0.05, ndt=10, cdf=True):
     """Recoloring simulation with Gaussian distance distribution.
     """
@@ -200,9 +203,12 @@ def recolor_burstsph_OU_gauss_R(
         R_ph, T_ph, S_ph = funcs[d.k_s.ndim](
             ts, δt, k_D, D_fract, R0, *params,
             rg=rg, chunk_size=chunk_size, alpha=α, ndt=ndt)
-    burstsph = _make_burstsph_df(timestamps, T_ph, R_ph, S_ph)
+    burstsph_all = _make_burstsph_df(timestamps, T_ph, R_ph, S_ph)
+    burstsph, bg = _select_background(burstsph_all, bg_rate_d=bg_rate_d, bg_rate_a=bg_rate_a,
+                                      ts_unit=ts_unit, tcspc_range=tcspc_range, rg=rg)
     burstsph = _color_photons(burstsph, R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
     burstsph = _add_acceptor_nanotime(burstsph, τ_A, A_fract, rg)
+    burstsph = _merge_ph_and_bg(burstsph_all, burstsph, bg)
     return burstsph
 
 
@@ -213,6 +219,59 @@ def _make_burstsph_df(timestamps, T_ph, R_ph, S_ph=None):
     if S_ph is not None:
         burstsph['state'] = S_ph
     return burstsph
+
+
+def _select_background(df, bg_rate_d, bg_rate_a, ts_unit, tcspc_range, rg):
+    if bg_rate_d == 0 and bg_rate_a == 0:
+        return df, pd.DataFrame(columns=['bg_a', 'bg_d'], dtype=bool)
+    func = partial(_background_per_burst, bg_rate_d=bg_rate_d, bg_rate_a=bg_rate_a,
+                   ts_unit=ts_unit, rg=rg)
+    bg = df.timestamp.groupby('burst').apply(func)
+    bg_mask = bg.bg_a | bg.bg_d
+    bg['nanotime'] = np.nan
+    bg.loc[bg_mask, 'nanotime'] = rg.rand(bg_mask.sum()) * tcspc_range
+    return df.loc[~bg_mask].copy(), bg
+
+
+def _background_per_burst(burst, bg_rate_d, bg_rate_a, ts_unit, rg):
+    burst = burst.reset_index('burst', drop=True)
+    assert (np.diff(burst.index.get_level_values('ph')) == 1).all(), 'missing ph'
+    assert burst.index.get_level_values('ph')[-1] == burst.shape[0] - 1, 'missing ph'
+    bsize = burst.shape[0]
+    bwidth = (burst.iloc[-1] - burst.iloc[0]) * ts_unit
+    bg_burst = (bg_rate_d + bg_rate_a) * bwidth
+    assert bg_burst < bsize
+    prob_A_ph_bg = bg_rate_a / (bg_rate_a + bg_rate_d)
+    prob_bg_ph = bg_burst / bsize
+    bg_ph = rg.binomial(1, p=prob_bg_ph, size=bsize)
+    bg_ph_index = np.where(bg_ph)[0]
+    a_bg_ph = rg.binomial(1, p=prob_A_ph_bg, size=bg_ph_index.size).astype(bool)
+    a_bg_ph_index = bg_ph_index[a_bg_ph]
+    d_bg_ph_index = list(set(bg_ph_index) - set(a_bg_ph_index))
+    bg = pd.DataFrame(index=burst.index, columns=['bg_a', 'bg_d'], dtype=bool)
+    bg.loc[:] = False
+    bg.iloc[a_bg_ph_index, 0] = True  # assign column 'bg_a'
+    bg.iloc[d_bg_ph_index, 1] = True  # assign column 'bg_d'
+    return bg
+
+
+def _merge_ph_and_bg(burstsph_all, burstsph, bg):
+    if burstsph_all.shape[0] == burstsph.shape[0]:
+        burstsph['bg'] = False
+        return burstsph
+    bg_mask = bg.bg_a | bg.bg_d
+    burstsph_all['A_ch'] = False
+    burstsph_all['leak_ph'] = False
+    burstsph_all['dir_ex_ph'] = False
+    burstsph_all['bg_ph'] = False
+    burstsph_all.loc[bg_mask, 'bg_ph'] = True
+    for col in ('nanotime', 'A_ch', 'stream', 'leak_ph', 'dir_ex_ph'):
+        burstsph_all.loc[~bg_mask, col] = burstsph[col]
+    burstsph_all.loc[bg_mask, 'nanotime'] = bg.loc[bg_mask, 'nanotime']
+    burstsph_all.loc[bg_mask, 'A_ch'] = bg.loc[bg_mask, 'bg_a']
+    burstsph_all['stream'] = pd.Categorical.from_codes(burstsph_all.A_ch,
+                                                       categories=["DexDem", "DexAem"])
+    return burstsph_all
 
 
 def _color_photons(df, R0, gamma, lk, dir_ex_t, rg):
