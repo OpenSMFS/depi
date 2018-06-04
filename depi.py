@@ -258,7 +258,7 @@ def _background_per_burst(burst, bg_rate_d, bg_rate_a, ts_unit, rg):
 
 def _merge_ph_and_bg(burstsph_all, burstsph, bg):
     if burstsph_all.shape[0] == burstsph.shape[0]:
-        burstsph['bg'] = False
+        burstsph['bg_ph'] = False
         return burstsph
     bg_mask = bg.bg_a | bg.bg_d
     burstsph_all['A_ch'] = False
