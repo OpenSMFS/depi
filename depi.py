@@ -48,7 +48,8 @@ def _get_multi_lifetime_components(τ_X, X_fract, label='D'):
 def recolor_burstsph(
         timestamps, *, R0, τ_relax, δt, τ_D, τ_A, D_fract=1., A_fract=1.,
         bg_rate_d=0, bg_rate_a=0, ts_unit=1e-9, tcspc_range=50,
-        gamma=1.0, lk=0., dir_ex_t=0., rg=None, chunk_size=1000, α=0.05, ndt=10,
+        prob_A_dark=0, τ_A_dark=0, gamma=1.0, lk=0., dir_ex_t=0.,
+        rg=None, chunk_size=1000, α=0.05, ndt=10,
         **dd_model):
     """Recolor burst photons with Ornstein–Uhlenbeck D-A distance diffusion.
 
@@ -115,6 +116,7 @@ def recolor_burstsph(
     return func(
         timestamps, R0=R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, τ_relax=τ_relax, δt=δt,
         τ_D=τ_D, D_fract=D_fract, τ_A=τ_A, A_fract=A_fract,
+        prob_A_dark=prob_A_dark, τ_A_dark=τ_A_dark,
         bg_rate_d=bg_rate_d, bg_rate_a=bg_rate_a, ts_unit=ts_unit, tcspc_range=tcspc_range,
         rg=rg, chunk_size=chunk_size, α=α, ndt=ndt, dd_params=dd_model)
 
@@ -122,6 +124,7 @@ def recolor_burstsph(
 def recolor_burstsph_OU_dist_distrib(
         timestamps, *, R0, gamma, lk, dir_ex_t, τ_relax, dd_params, δt,
         τ_D, τ_A, D_fract=1., A_fract=1., bg_rate_d, bg_rate_a, ts_unit, tcspc_range,
+        prob_A_dark=0, τ_A_dark=0,
         rg=None, chunk_size=1000, α=0.05, ndt=10):
     """Recoloring simulation with non-Gaussian distance distribution.
     """
@@ -170,6 +173,7 @@ def recolor_burstsph_OU_dist_distrib(
     burstsph, bg = _select_background(burstsph_all, bg_rate_d=bg_rate_d, bg_rate_a=bg_rate_a,
                                       ts_unit=ts_unit, tcspc_range=tcspc_range, rg=rg)
     burstsph = _color_photons(burstsph, R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
+    burstsph = _recolor_A_photo_blinking(burstsph, prob_A_dark, τ_A_dark)
     burstsph = _add_acceptor_nanotime(burstsph, τ_A, A_fract, rg)
     burstsph = _merge_ph_and_bg(burstsph_all, burstsph, bg)
     return burstsph
@@ -178,6 +182,7 @@ def recolor_burstsph_OU_dist_distrib(
 def recolor_burstsph_OU_gauss_R(
         timestamps, *, R0, gamma, lk, dir_ex_t, τ_relax, dd_params, δt,
         τ_D, τ_A, D_fract=1., A_fract=1., bg_rate_d, bg_rate_a, ts_unit, tcspc_range,
+        prob_A_dark=0, τ_A_dark=0,
         rg=None, chunk_size=1000, α=0.05, ndt=10, cdf=True):
     """Recoloring simulation with Gaussian distance distribution.
     """
@@ -210,8 +215,39 @@ def recolor_burstsph_OU_gauss_R(
     burstsph, bg = _select_background(burstsph_all, bg_rate_d=bg_rate_d, bg_rate_a=bg_rate_a,
                                       ts_unit=ts_unit, tcspc_range=tcspc_range, rg=rg)
     burstsph = _color_photons(burstsph, R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
+    burstsph = _recolor_A_photo_blinking(burstsph, prob_A_dark, τ_A_dark)
     burstsph = _add_acceptor_nanotime(burstsph, τ_A, A_fract, rg)
     burstsph = _merge_ph_and_bg(burstsph_all, burstsph, bg)
+    return burstsph
+
+
+def _acceptor_blinking_core(A_dark, ts, A_dark_times, A_ch):
+    A_dark = memoryview(A_dark)
+    ts = memoryview(ts)
+    A_dark_times = memoryview(A_dark_times)
+    A_ch = memoryview(A_ch)
+
+    dark = False
+    for i in range(len(A_dark)):
+        if A_dark[i]:
+            # switch A to the dark state
+            dark = True
+            dark_start = ts[i]
+            dark_time = A_dark_times[i]
+        if dark:
+            A_ch[i] = False   # recolor photon as Donor-emitted
+            A_dark[i] = True  # label photon as A dark-state
+            dark_time_elapsed = ts[i] - dark_start
+            if dark_time_elapsed >= dark_time:
+                # go back to the bright state
+                dark = False
+    return np.asarray(A_ch), np.asarray(A_dark)
+
+
+def _recolor_A_photo_blinking(burstsph, prob_A_dark, τ_A_dark):
+    if prob_A_dark == 0:
+        return burstsph
+    # TO BE IMPLEMENTED
     return burstsph
 
 
@@ -313,9 +349,6 @@ def _color_photons(df, R0, gamma, lk, dir_ex_t, rg):
     num_dir_ex_ph = dir_ex_photons.sum()
     df['dir_ex_ph'] = False
     df.loc[A_em_nolk, 'dir_ex_ph'] = dir_ex_photons
-    nanot_dir_ex = df.nanotime.copy()
-    nanot_dir_ex[df.dir_ex_ph] = 0
-    df.nanotime = nanot_dir_ex
     assert df.dir_ex_ph.sum() == num_dir_ex_ph, f'{df.dir_ex_ph.sum()}, {num_dir_ex_ph}'
     assert A_em[df.leak_ph].all()
     assert A_em[df.dir_ex_ph].all()
@@ -323,6 +356,17 @@ def _color_photons(df, R0, gamma, lk, dir_ex_t, rg):
 
 
 def _add_acceptor_nanotime(df, τ_A, A_fract, rg):
+    """Modify the D nanotime by adding the A components.
+    Leaked photons are not touched. A-direct excitation photons will have the
+    D nanotime set to 0 and will only have A components.
+    """
+    # Save original D-deexcitation nanotimes
+    df['nanotime_d'] = df['nanotime'].copy()
+    # Set the initial nanotime of A direct excitation photons to 0
+    nanot_dir_ex = df.nanotime.copy()
+    nanot_dir_ex[df.dir_ex_ph] = 0
+    df.nanotime = nanot_dir_ex
+    # Add A lifetimes to non-leaked photons
     A_mask = df.A_ch & ~df.leak_ph
     if np.size(τ_A) == 1:
         # Add A lifetimes to A nanotimes
