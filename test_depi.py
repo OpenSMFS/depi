@@ -16,10 +16,12 @@ def load_burstsph():
     burstsph = pd.read_csv(fname, skiprows=1, index_col=(0, 1))
     header = fname.read_text().split('\n')[0]
     meta = json.loads(header)
+    meta['timestamp_unit_hw'] = meta['timestamp_unit']
+    meta['timestamp_unit'] = 1e-9
     scale = meta['timestamp_unit'] * 1e9
     scale = int(scale) if round(scale) == scale else scale
     burstsph.timestamp *= scale
-    return burstsph
+    return burstsph, meta
 
 
 def test_py_vs_cy():
@@ -33,7 +35,7 @@ def test_py_vs_cy():
     τ_D = 4 * ns
     k_D = 1 / τ_D
 
-    burstsph = load_burstsph()
+    burstsph, _ = load_burstsph()
     ts = burstsph.timestamp.values[:1000]
 
     rg = RandomGenerator(Xoroshiro128(1))
@@ -78,7 +80,7 @@ def test_approx_vs_correct():
     With α=np.inf, ndt=0 the adaptive functions should give the same
     results as the approximeated function.
     """
-    burstsph = load_burstsph()
+    burstsph, _ = load_burstsph()
     ns = 1.0
     nm = 1.0
     δt = 1e-1 * ns
@@ -116,7 +118,7 @@ def test_dt_tollerance():
     """
     Using small enough dt approximated and correct expression should be similar
     """
-    burstsph = load_burstsph()
+    burstsph, _ = load_burstsph()
     ns = 1.0
     nm = 1.0
     δt = 5e-4 * ns
@@ -166,7 +168,7 @@ def test_cdf_vs_dt_python():
     """
     Test CDF vs small-dt correction in python code
     """
-    burstsph = load_burstsph()
+    burstsph, _ = load_burstsph()
     ns = 1.0
     nm = 1.0
     δt = 1e-2 * ns
@@ -192,7 +194,7 @@ def test_cdf_vs_dt_cy():
     """
     Test CDF vs small-dt correction in cython code
     """
-    burstsph = load_burstsph()
+    burstsph, _ = load_burstsph()
     ns = 1.0
     nm = 1.0
     δt = 1e-2 * ns
@@ -216,7 +218,7 @@ def test_cdf_vs_dt_cy():
 
 
 def test_2states_py_vs_cy():
-    burstsph = load_burstsph()
+    burstsph, _ = load_burstsph()
     ns = 1.0
     nm = 1.0
     R0 = 6 * nm
@@ -243,7 +245,7 @@ def test_2states_py_vs_cy():
 
 
 def test_Nstates_py_vs_cy():
-    burstsph = load_burstsph()
+    burstsph, _ = load_burstsph()
     ns = 1.0
     nm = 1.0
     R0 = 6 * nm
@@ -271,7 +273,7 @@ def test_Nstates_py_vs_cy():
 
 
 def test_2states_vs_Nstates():
-    burstsph = load_burstsph()
+    burstsph, _ = load_burstsph()
     ns = 1.0
     nm = 1.0
     R0 = 6 * nm
@@ -302,7 +304,8 @@ def test_2states_vs_Nstates():
 
 def test_corrections():
     N = 50000
-    burstsph = load_burstsph().iloc[:N]
+    burstsph, _ = load_burstsph()
+    burstsph = burstsph.iloc[:N]
     ns = nm = 1.
     params = dict(
         name='gaussian',
@@ -361,3 +364,50 @@ def test_corrections():
     Eraw2 = fret.uncorrect_E_gamma_leak_dir(E_corr, params['gamma'], params['lk'],
                                             dir_ex_t=params['dir_ex_t'])
     assert np.allclose(Eraw, Eraw2, atol=5e-3, rtol=0)
+
+
+def test_background():
+    N = 100000
+    burstsph, meta = load_burstsph()
+    burstsph = burstsph.iloc[:N]
+    ns = nm = 1.
+    params = dict(
+        name='gaussian',
+        # physical parameters
+        R_mean=6.5 * nm,
+        R_sigma=0.01 * nm,
+        R0=6 * nm,
+        τ_relax=200 * ns,
+        τ_D=[3.8 * ns, 1 * ns],
+        D_fract=[0.5, 0.5],
+        τ_A=[4 * ns, 1 * ns],
+        A_fract=[0.3, 0.7],
+        bg_rate_d=1000,
+        bg_rate_a=1500,
+        ts_unit=meta['timestamp_unit'],
+        tcspc_unit=30 * ns,
+        # simulation parameters
+        δt=1e-2 * ns,
+        ndt=10,
+        α=0.1,
+        gamma=0.6,
+        lk=0.4,
+        dir_ex_t=0.3,
+    )
+    rg = RandomGenerator(Xoroshiro128(1))
+    burstsph_sim = depi.recolor_burstsph(burstsph.timestamp, rg=rg, **params)
+
+    def func(burst):
+        bg_counts = burst.bg_ph.sum()
+        bg_counts_d = burst.bg_ph.loc[burst.stream == 'DexDem'].sum()
+        bg_counts_a = burst.bg_ph.loc[burst.stream == 'DexAem'].sum()
+        burst_width = (burst.timestamp.iloc[-1] - burst.timestamp.iloc[0]) * 1e-9
+        bg_rate = bg_counts / burst_width
+        bg_rate_d = bg_counts_d / burst_width
+        bg_rate_a = bg_counts_a / burst_width
+        return pd.Series([bg_rate, bg_rate_d, bg_rate_a],
+                         index=['bg', 'bg_d', 'bg_a'])
+    bg = burstsph_sim.groupby('burst').apply(func)
+    assert np.allclose(bg.bg.mean(), 2500, atol=0, rtol=3e-2)
+    assert np.allclose(bg.bg_d.mean(), 1000, atol=0, rtol=6e-2)
+    assert np.allclose(bg.bg_a.mean(), 1500, atol=0, rtol=6e-2)
