@@ -4,6 +4,18 @@ import pandas as pd
 import depi_cy
 import dist_distrib as dd
 import fret
+import json
+
+
+def save_params(fname, params):
+    with open(fname, 'wt') as f:
+        json.dump(params, f, ensure_ascii=False, indent=4)
+
+
+def load_params(fname):
+    with open(fname) as f:
+        params = json.load(f)
+    return params
 
 
 def validate_params(params):
