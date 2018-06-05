@@ -383,8 +383,9 @@ def _color_photons(df, R0, gamma, lk, dir_ex_t, rg):
 
 def _add_acceptor_nanotime(df, τ_A, A_fract, rg):
     """Modify the D nanotime by adding the A components.
-    Leaked photons are not touched. A-direct excitation photons will have the
-    D nanotime set to 0 and will only have A components.
+    Leaked photons are not touched. This function sets the nanotime
+    of A-direct-excitation photons to 0 before adding the
+    A fluorescence components.
     """
     # Save original D-deexcitation nanotimes
     df['nanotime_d'] = df['nanotime'].copy()
@@ -394,15 +395,22 @@ def _add_acceptor_nanotime(df, τ_A, A_fract, rg):
     df.nanotime = nanot_dir_ex
     # Add A lifetimes to non-leaked photons
     A_mask = df.A_ch & ~df.leak_ph
-    if np.size(τ_A) == 1:
-        # Add A lifetimes to A nanotimes
-        df.loc[A_mask, 'nanotime'] += rg.exponential(scale=τ_A, size=A_mask.sum())
-    else:
-        num_A_comps = len(τ_A)
-        components = rg.choice(num_A_comps, size=A_mask.sum(), p=A_fract)
-        for i, τ_A_i in enumerate(τ_A):
-            # Add A lifetimes to nanotimes for component i
-            comp_i = A_mask.copy()
-            comp_i.loc[A_mask] = (components == i)
-            df.loc[comp_i, 'nanotime'] += rg.exponential(scale=τ_A_i, size=comp_i.sum())
+    nanotime = _calc_intrisic_nanotime(A_mask.sum(), τ_A, A_fract, rg)
+    df.loc[A_mask, 'nanotime'] += nanotime
     return df
+
+
+def _calc_intrisic_nanotime(num_ph, τ_X, X_fract, rg):
+    """Generate the nanotime for single or multi-componet decays.
+    """
+    if np.size(τ_X) == 1:
+        nanotime = rg.exponential(scale=τ_X, size=num_ph)
+    else:
+        num_X_comps = len(τ_X)
+        components = rg.choice(num_X_comps, size=num_ph, p=X_fract)
+        nanotime = np.zeros(num_ph)
+        for i, τ_X_i in enumerate(τ_X):
+            # Compute nanotimes for component `i` of the fluorescence decay
+            component_i = components == i
+            nanotime[component_i] = rg.exponential(scale=τ_X_i, size=component_i.sum())
+    return nanotime
