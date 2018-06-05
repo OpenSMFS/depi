@@ -215,18 +215,47 @@ def recolor_burstsph_OU_gauss_R(
     burstsph, bg = _select_background(burstsph_all, bg_rate_d=bg_rate_d, bg_rate_a=bg_rate_a,
                                       ts_unit=ts_unit, tcspc_range=tcspc_range, rg=rg)
     burstsph = _color_photons(burstsph, R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
-    burstsph = _recolor_A_photo_blinking(burstsph, prob_A_dark, τ_A_dark)
+    burstsph = _recolor_A_photo_blinking(burstsph, prob_A_dark, τ_A_dark, lk, rg)
     burstsph = _add_acceptor_nanotime(burstsph, τ_A, A_fract, rg)
     burstsph = _merge_ph_and_bg(burstsph_all, burstsph, bg)
     return burstsph
 
 
-def _acceptor_blinking_core(A_dark, ts, A_dark_times, A_ch):
+def _recolor_A_photo_blinking(burstsph, prob_A_dark, τ_A_dark, lk, rg):
+    if prob_A_dark == 0:
+        burstsph['A_dark_ph'] = False
+        return burstsph
+    # Acceptor-dye emitted photons (no D leakage), before A photo-blinking
+    Aem = (burstsph.stream == 'DexAem') & ~burstsph.leak_ph
+    num_Aem = Aem.sum()
+    # Simulate acceptor bright to dark transitions
+    u = rg.rand(num_Aem)
+    A_dark = u <= prob_A_dark
+    # Recolor and label photons emitted during A dark state
+    # Generate a tau for each `Aem` photon, then discard it unless the photon is "dark"
+    A_dark_lifetimes = rg.exponential(scale=τ_A_dark, size=num_Aem)
+    ts = burstsph.loc[Aem, 'timestamp'].values
+    A_dark = _generate_acceptor_dark_state(A_dark, ts, A_dark_lifetimes)
+    assert A_dark.size == num_Aem
+    burstsph['A_dark_ph'] = False
+    burstsph.loc[Aem, 'A_dark_ph'] = A_dark
+    burstsph.loc[burstsph.A_dark_ph, 'A_ch'] = False
+    assert burstsph.loc[burstsph.A_dark_ph, 'A_dark_ph'].all()
+    assert not burstsph.loc[burstsph.A_dark_ph, 'A_ch'].any()
+    # Simulate residual D leakge
+    if lk > 0:
+        new_lk_ph = rg.binomial(1, p=lk, size=A_dark.sum())
+        burstsph.loc[burstsph.A_dark_ph, 'leak_ph'] |= new_lk_ph
+        burstsph.loc[burstsph.leak_ph, 'A_ch'] = True
+    # Recompute the categorical "stream" column from A_ch
+    burstsph = _set_ph_stream_column(burstsph, burstsph.A_ch)
+    return burstsph
+
+
+def _generate_acceptor_dark_state(A_dark, ts, A_dark_times):
     A_dark = memoryview(A_dark)
     ts = memoryview(ts)
     A_dark_times = memoryview(A_dark_times)
-    A_ch = memoryview(A_ch)
-
     dark = False
     for i in range(len(A_dark)):
         if A_dark[i]:
@@ -235,20 +264,12 @@ def _acceptor_blinking_core(A_dark, ts, A_dark_times, A_ch):
             dark_start = ts[i]
             dark_time = A_dark_times[i]
         if dark:
-            A_ch[i] = False   # recolor photon as Donor-emitted
             A_dark[i] = True  # label photon as A dark-state
             dark_time_elapsed = ts[i] - dark_start
             if dark_time_elapsed >= dark_time:
                 # go back to the bright state
                 dark = False
-    return np.asarray(A_ch), np.asarray(A_dark)
-
-
-def _recolor_A_photo_blinking(burstsph, prob_A_dark, τ_A_dark):
-    if prob_A_dark == 0:
-        return burstsph
-    # TO BE IMPLEMENTED
-    return burstsph
+    return np.asarray(A_dark)
 
 
 def _make_burstsph_df(timestamps, T_ph, R_ph, S_ph=None):
@@ -296,19 +317,24 @@ def _merge_ph_and_bg(burstsph_all, burstsph, bg):
     if burstsph_all.shape[0] == burstsph.shape[0]:
         burstsph['bg_ph'] = False
         return burstsph
+    # This way of merging bg into a bigger DataFRame is ugly and brittle
+    # there must be a better way!
     bg_mask = bg.bg_a | bg.bg_d
-    burstsph_all['A_ch'] = False
-    burstsph_all['leak_ph'] = False
-    burstsph_all['dir_ex_ph'] = False
-    burstsph_all['bg_ph'] = False
+    bool_cols = ['A_ch', 'leak_ph', 'dir_ex_ph', 'A_dark_ph']
+    for col in bool_cols:
+        burstsph_all[col] = False  # create the column
     burstsph_all.loc[bg_mask, 'bg_ph'] = True
-    for col in ('nanotime', 'A_ch', 'stream', 'leak_ph', 'dir_ex_ph'):
+    for col in ['nanotime'] + bool_cols:
         burstsph_all.loc[~bg_mask, col] = burstsph[col]
     burstsph_all.loc[bg_mask, 'nanotime'] = bg.loc[bg_mask, 'nanotime']
     burstsph_all.loc[bg_mask, 'A_ch'] = bg.loc[bg_mask, 'bg_a']
-    burstsph_all['stream'] = pd.Categorical.from_codes(burstsph_all.A_ch,
-                                                       categories=["DexDem", "DexAem"])
+    burstsph_all = _set_ph_stream_column(burstsph_all, burstsph_all.A_ch)
     return burstsph_all
+
+
+def _set_ph_stream_column(df, A_ch):
+    df['stream'] = pd.Categorical.from_codes(A_ch, categories=["DexDem", "DexAem"])
+    return df
 
 
 def _color_photons(df, R0, gamma, lk, dir_ex_t, rg):
@@ -322,7 +348,7 @@ def _color_photons(df, R0, gamma, lk, dir_ex_t, rg):
     ND = A_em.size - NA
     assert D_em.sum() == ND
     df['A_ch'] = A_em
-    df['stream'] = pd.Categorical.from_codes(A_em, categories=["DexDem", "DexAem"])
+    df = _set_ph_stream_column(df, A_em)
     # These values are shot-noise free
     ND_theor = num_ph * (1 - Eraw)
     NA_theor = num_ph * Eraw
