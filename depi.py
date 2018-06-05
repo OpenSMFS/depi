@@ -173,7 +173,7 @@ def recolor_burstsph_OU_dist_distrib(
     burstsph, bg = _select_background(burstsph_all, bg_rate_d=bg_rate_d, bg_rate_a=bg_rate_a,
                                       ts_unit=ts_unit, tcspc_range=tcspc_range, rg=rg)
     burstsph = _color_photons(burstsph, R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
-    burstsph = _recolor_A_photo_blinking(burstsph, prob_A_dark, τ_A_dark)
+    burstsph = _recolor_A_blinking(burstsph, prob_A_dark, τ_A_dark, lk, τ_D, D_fract, rg)
     burstsph = _add_acceptor_nanotime(burstsph, τ_A, A_fract, rg)
     burstsph = _merge_ph_and_bg(burstsph_all, burstsph, bg)
     return burstsph
@@ -215,13 +215,13 @@ def recolor_burstsph_OU_gauss_R(
     burstsph, bg = _select_background(burstsph_all, bg_rate_d=bg_rate_d, bg_rate_a=bg_rate_a,
                                       ts_unit=ts_unit, tcspc_range=tcspc_range, rg=rg)
     burstsph = _color_photons(burstsph, R0, gamma=gamma, lk=lk, dir_ex_t=dir_ex_t, rg=rg)
-    burstsph = _recolor_A_photo_blinking(burstsph, prob_A_dark, τ_A_dark, lk, rg)
+    burstsph = _recolor_A_blinking(burstsph, prob_A_dark, τ_A_dark, lk, τ_D, D_fract, rg)
     burstsph = _add_acceptor_nanotime(burstsph, τ_A, A_fract, rg)
     burstsph = _merge_ph_and_bg(burstsph_all, burstsph, bg)
     return burstsph
 
 
-def _recolor_A_photo_blinking(burstsph, prob_A_dark, τ_A_dark, lk, rg):
+def _recolor_A_blinking(burstsph, prob_A_dark, τ_A_dark, lk, τ_D, D_fract, rg):
     if prob_A_dark == 0:
         burstsph['A_dark_ph'] = False
         return burstsph
@@ -236,15 +236,21 @@ def _recolor_A_photo_blinking(burstsph, prob_A_dark, τ_A_dark, lk, rg):
     A_dark_lifetimes = rg.exponential(scale=τ_A_dark, size=num_Aem)
     ts = burstsph.loc[Aem, 'timestamp'].values
     A_dark = _generate_acceptor_dark_state(A_dark, ts, A_dark_lifetimes)
+    num_A_dark = A_dark.sum()
     assert A_dark.size == num_Aem
     burstsph['A_dark_ph'] = False
     burstsph.loc[Aem, 'A_dark_ph'] = A_dark
     burstsph.loc[burstsph.A_dark_ph, 'A_ch'] = False
+    assert num_A_dark == burstsph.A_dark_ph.sum()
     assert burstsph.loc[burstsph.A_dark_ph, 'A_dark_ph'].all()
     assert not burstsph.loc[burstsph.A_dark_ph, 'A_ch'].any()
-    # Simulate residual D leakge
+    # Set the D fluorescence lifetime for blinked photons
+    burstsph.loc[burstsph.A_dark_ph, 'nanotime'] = _calc_intrisic_nanotime(
+        num_A_dark, τ_D, D_fract, rg)
+    # Simulate residual D leakage
     if lk > 0:
-        new_lk_ph = rg.binomial(1, p=lk, size=A_dark.sum())
+        # NOTE: leaked photons go into the A channel but retain D nanotime
+        new_lk_ph = rg.binomial(1, p=lk, size=num_A_dark)
         burstsph.loc[burstsph.A_dark_ph, 'leak_ph'] |= new_lk_ph
         burstsph.loc[burstsph.leak_ph, 'A_ch'] = True
     # Recompute the categorical "stream" column from A_ch
