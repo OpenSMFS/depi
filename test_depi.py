@@ -24,6 +24,21 @@ def load_burstsph():
     return burstsph, meta
 
 
+def test_calc_intrisic_nanotime():
+    rg = RandomGenerator(Xoroshiro128(1))
+    n = int(1e6)
+    τ = 2
+    fract = None
+    nanot = depi._calc_intrisic_nanotime(n, τ, fract, rg)
+    assert np.allclose(nanot.mean(), τ, rtol=5e-3)
+
+    n = int(1e6)
+    τ = np.array([1, 7])
+    fract = np.array([0.3, 0.7])
+    nanot = depi._calc_intrisic_nanotime(n, τ, fract, rg)
+    assert np.allclose(sum(fract * τ), nanot.mean(), rtol=1e-2)
+
+
 def test_py_vs_cy():
     ns = 1.0
     nm = 1.0
