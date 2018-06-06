@@ -5,6 +5,18 @@ import depi_cy
 import dist_distrib as dd
 import fret
 import json
+from joblib import Memory
+
+
+mem = Memory(cachedir='joblib_cache')
+
+
+@mem.cache
+def recolor_burstsph_cache(timestamp, seed=1, **params):
+    from randomgen import RandomGenerator, Xoroshiro128
+    rg = RandomGenerator(Xoroshiro128(seed))
+    burstsph = recolor_burstsph(timestamp, rg=rg, **params)
+    return burstsph
 
 
 def save_params(fname, params):
