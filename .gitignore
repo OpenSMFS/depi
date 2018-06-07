@@ -10,3 +10,4 @@ photonHDF5*
 *.html
 results
 *.ipynb
+depi.egg-info
