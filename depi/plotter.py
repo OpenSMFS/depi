@@ -5,8 +5,9 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import seaborn as sns
 from IPython.display import display
-import dist_distrib as dd
-import fret
+
+from . import dist_distrib as dd
+from . import fret
 
 
 def mpl_text_1state(params, E_μ, show_τ_relax=True, space='nm', time='s'):

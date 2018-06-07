@@ -9,7 +9,8 @@ import cython
 import numpy as np
 cimport numpy as np
 from libc.math cimport exp, sqrt
-import ctmc
+
+from . import ctmc
 
 
 @cython.boundscheck(False)

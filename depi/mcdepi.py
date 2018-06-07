@@ -1,11 +1,12 @@
 from functools import partial
 import numpy as np
 import pandas as pd
-import depi_cy
-import dist_distrib as dd
-import fret
 import json
 from joblib import Memory
+
+from . import dist_distrib as dd
+from . import fret
+from . import depi_cy
 
 
 mem = Memory(cachedir='joblib_cache')
@@ -13,6 +14,7 @@ mem = Memory(cachedir='joblib_cache')
 
 @mem.cache
 def recolor_burstsph_cache(timestamp, seed=1, **params):
+    """Cached version of :func:`recolor_burstsph`."""
     from randomgen import RandomGenerator, Xoroshiro128
     rg = RandomGenerator(Xoroshiro128(seed))
     burstsph = recolor_burstsph(timestamp, rg=rg, **params)
@@ -20,17 +22,24 @@ def recolor_burstsph_cache(timestamp, seed=1, **params):
 
 
 def save_params(fname, params):
+    """Save the simulation parameters `params` to disk."""
+    if not fname.lower().endswith('.json'):
+        fname = fname + '.json'
     with open(fname, 'wt') as f:
         json.dump(params, f, ensure_ascii=False, indent=4)
 
 
 def load_params(fname):
+    """Load the simulation parameters from file `fname`."""
+    if not fname.lower().endswith('.json'):
+        fname = fname + '.json'
     with open(fname) as f:
         params = json.load(f)
     return params
 
 
 def validate_params(params):
+    """Validate consistency of simulation parameters."""
     d = dd.distribution(params)  # validates the distance-distribution parameters
     _check_args(params['τ_relax'], params['ndt'], params['α'], d.num_states)
     _get_multi_lifetime_components(params['τ_D'], params.get('D_fract'), 'D')
@@ -38,6 +47,7 @@ def validate_params(params):
 
 
 def _check_args(τ_relax, ndt, α, num_states):
+    """Check input arguments for recoloring simulation."""
     if all(np.atleast_1d(np.asarray(τ_relax)) == 0) and ndt > 0:
         raise ValueError('When τ_relax = 0 also ndt needs to be 0 '
                          'in order to avoid a 0 time-step size.')
@@ -92,13 +102,13 @@ def recolor_burstsph(
     This dictionary have a key "name" which should be one of the strings:
     'gaussian', 'wlc', 'gaussian_chain', 'radial_gaussian'.
     Multi-state models can be specified when the distance distribution
-    paramenters are arrays instead of scalars. In this case also `τ_relax`
-    needs to be an array.
+    parameters are arrays instead of scalars. In this case also `τ_relax`
+    needs to be an array (of same length).
 
     The D and A fluorescence decays can be single of multi-exponential.
     When `τ_D` or `τ_A` are scalars the decays are mono-exponential.
     When `τ_D` or `τ_A` are arrays the argument `D_fract` and `A_fract`
-    dictate the fractions of the different exponential components.
+    specify the fractions of the different exponential components.
 
     Arguments:
         timestamps (pandas.Series): macrotimes of photons to be recolored.

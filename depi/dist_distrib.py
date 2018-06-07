@@ -1,8 +1,9 @@
 import numpy as np
 from scipy.special import erf
 from IPython.display import Math, HTML, display
-import ctmc
-import fret
+
+from . import ctmc
+from . import fret
 
 
 valid_model_names = ('gaussian', 'wlc', 'gaussian_chain', 'radial_gaussian')
