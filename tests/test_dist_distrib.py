@@ -1,5 +1,5 @@
 import numpy as np
-import dist_distrib as dd
+from depi import dist_distrib as dd
 
 
 nm = 1.

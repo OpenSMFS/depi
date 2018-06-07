@@ -2,10 +2,11 @@ from math import exp
 import numpy as np
 import pandas as pd
 import numba
-import depi_cy
-from depi_cy import ou_single_step_cy
-import fret
-import ctmc
+
+from . import depi_cy
+from .depi_cy import ou_single_step_cy
+from . import fret
+from . import ctmc
 
 
 #

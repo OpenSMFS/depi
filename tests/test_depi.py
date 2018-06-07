@@ -4,11 +4,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from randomgen import RandomGenerator, Xoroshiro128
-import depi_ref
-import depi_cy
-import fret
-import depi
-import dist_distrib as dd
+
+from depi import depi_ref
+from depi import depi_cy
+from depi import fret
+from depi import depi
+from depi import dist_distrib as dd
 
 
 def load_burstsph():

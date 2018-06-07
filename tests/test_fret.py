@@ -1,5 +1,5 @@
 import numpy as np
-import fret
+from depi import fret
 
 
 def test_fretmath_roundtrip():
