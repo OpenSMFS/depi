@@ -1,0 +1,2 @@
+include versioneer.py
+include depi/_version.py

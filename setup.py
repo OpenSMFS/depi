@@ -2,6 +2,8 @@ from distutils.core import setup
 from distutils.extension import Extension
 from Cython.Build import cythonize
 import numpy as np
+import versioneer
+
 
 extensions = [
     Extension(
@@ -15,7 +17,8 @@ extensions = [
 
 setup(
     name="depi",
-    version='0.1',
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
     author='Antonino Ingargiola',
     author_email='tritemio@gmail.com',
     url='http://opensmfs.github.io/depi/',
