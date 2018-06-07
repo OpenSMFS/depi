@@ -1,4 +1,5 @@
-from . import mcdepi
+from .depi import (recolor_burstsph, mem, recolor_burstsph_cache,
+                   save_params, load_params, validate_params)
 from . import bva
 from . import ctmc
 from . import dist_distrib
