@@ -1,3 +1,16 @@
+"""
+Compute BVA from burst photon data.
+
+The input photon data must be a DataFrame with one row per photon and
+mandatory columns 'timestamp' and 'stream' (additional columns are ignored).
+The input photons must be only the photons remaining after burst search.
+
+The DataFrame index must contains two levels ('burst', 'ph'). 'burst' is
+an integer indicating the burst number. 'ph' is an integer indicating the
+photon-number in each burst ('ph' is 0 for the first photon of each burst).
+This format is exported by FRETBursts when saving the burst photon data.
+"""
+
 from collections import defaultdict
 import numpy as np
 import pandas as pd
