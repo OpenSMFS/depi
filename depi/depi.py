@@ -357,12 +357,13 @@ def _merge_ph_and_bg(burstsph_all, burstsph, bg):
     if burstsph_all.shape[0] == burstsph.shape[0]:
         burstsph['bg_ph'] = False
         return burstsph
-    # This way of merging bg into a bigger DataFRame is ugly and brittle
+    # This way of merging bg into a bigger DataFrame is ugly and brittle
     # there must be a better way!
     bg_mask = bg.bg_a | bg.bg_d
     bool_cols = ['A_ch', 'leak_ph', 'dir_ex_ph', 'A_dark_ph']
     for col in bool_cols:
         burstsph_all[col] = False  # create the column
+    burstsph_all['bg_ph'] = False  # create the bg_ph column
     burstsph_all.loc[bg_mask, 'bg_ph'] = True
     for col in ['nanotime'] + bool_cols:
         burstsph_all.loc[~bg_mask, col] = burstsph[col]
