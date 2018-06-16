@@ -1,4 +1,5 @@
 from functools import partial
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import json
@@ -25,6 +26,9 @@ def save_params(fname, params):
     """Save the simulation parameters `params` to disk."""
     if not fname.lower().endswith('.json'):
         fname = fname + '.json'
+    if Path(fname).exists():
+        raise IOError(f'File {fname} aready exists. '
+                      f'Please move it before saving with the same name.')
     with open(fname, 'wt') as f:
         json.dump(params, f, ensure_ascii=False, indent=4)
 
