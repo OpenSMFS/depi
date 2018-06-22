@@ -22,13 +22,15 @@ def recolor_burstsph_cache(timestamp, seed=1, **params):
     return burstsph
 
 
-def save_params(fname, params):
+def save_params(fname, params, bounds=None):
     """Save the simulation parameters `params` to disk."""
     if not fname.lower().endswith('.json'):
         fname = fname + '.json'
     if Path(fname).exists():
         raise IOError(f'File {fname} aready exists. '
                       f'Please move it before saving with the same name.')
+    if bounds is not None:
+        params = {**params, bounds: bounds}  # doesn't modify the original params
     with open(fname, 'wt') as f:
         json.dump(params, f, ensure_ascii=False, indent=4)
 
@@ -39,7 +41,8 @@ def load_params(fname):
         fname = fname + '.json'
     with open(fname) as f:
         params = json.load(f)
-    return params
+    bounds = params.pop('bounds', None)
+    return params, bounds
 
 
 def validate_params(params):
