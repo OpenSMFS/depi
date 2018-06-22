@@ -164,10 +164,11 @@ def iloss_residuals_fcs(bph_sim, bins, CC_DA_exp, AC_DD_exp,
 # The keyword argument `cache` is passed to the recoloring function.
 #
 
-def loss_E(params_vary, params_const, ts, recolor_func, E_exp, E_bins, cache=False):
+def loss_E(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
+           cache=False, seed=1):
     """Loss function for E histogram.
     """
-    bph_sim = recolor_func(params_vary, params_const, ts, cache=cache)
+    bph_sim = recolor_func(params_vary, params_const, ts, cache=cache, seed=seed)
     loss_E = iloss_loglike_E(bph_sim, E_exp=E_exp, E_bins=E_bins)
     return loss_E
 
@@ -175,10 +176,10 @@ def loss_E(params_vary, params_const, ts, recolor_func, E_exp, E_bins, cache=Fal
 def loss_nanot(params_vary, params_const, ts, recolor_func,
                irf, nt_bins, tcspc_unit, nanot_hist_d_exp, nanot_hist_a_exp,
                loglike_d_std, loglike_a_std, irf_seed=1,
-               cache=False):
+               cache=False, seed=1):
     """Loss function for fluorescence decays.
     """
-    bph_sim = recolor_func(params_vary, params_const, ts, cache=cache)
+    bph_sim = recolor_func(params_vary, params_const, ts, cache=cache, seed=seed)
     loss_nanot = iloss_loglike_nanot(
         bph_sim, irf=irf, nt_bins=nt_bins, tcspc_unit=tcspc_unit,
         nanot_hist_d_exp=nanot_hist_d_exp, nanot_hist_a_exp=nanot_hist_a_exp,
@@ -190,10 +191,10 @@ def loss_E_fcs(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
                fcs_bins, CC_DA_exp, AC_DD_exp, CC_DA_std_dev, AC_DD_std_dev,
                CC_DA_loss_std, AC_DD_loss_std,
                E_loss_std=1, FCS_loss_std=1,
-               cache=False):
+               cache=False, seed=1):
     """Loss function combining E histogram and FCS curves (CC_DA and AC_DD).
     """
-    bph_sim = recolor_func(params_vary, params_const, ts, cache=cache)
+    bph_sim = recolor_func(params_vary, params_const, ts, cache=cache, seed=seed)
     loss_E = iloss_loglike_E(bph_sim, E_exp=E_exp, E_bins=E_bins)
     loss_fcs = iloss_residuals_fcs(
         bph_sim, bins=fcs_bins, CC_DA_exp=CC_DA_exp, AC_DD_exp=AC_DD_exp,
@@ -206,10 +207,10 @@ def loss_E_nanot(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
                  irf, nt_bins, tcspc_unit, nanot_hist_d_exp, nanot_hist_a_exp,
                  loglike_d_std, loglike_a_std, irf_seed=1,
                  E_loss_std=1, nanot_loss_std=1,
-                 cache=False):
+                 cache=False, seed=1):
     """Loss function combining E histogram and fluorescence decays.
     """
-    bph_sim = recolor_func(params_vary, params_const, ts, cache=cache)
+    bph_sim = recolor_func(params_vary, params_const, ts, cache=cache, seed=seed)
     loss_E = iloss_loglike_E(bph_sim, E_exp=E_exp, E_bins=E_bins)
     loss_nanot = iloss_loglike_nanot(
         bph_sim, irf=irf, nt_bins=nt_bins, tcspc_unit=tcspc_unit,
@@ -224,10 +225,10 @@ def loss_E_fcs_nanot(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
                      irf, nt_bins, tcspc_unit, nanot_hist_d_exp, nanot_hist_a_exp,
                      loglike_d_std, loglike_a_std, irf_seed=1,
                      E_loss_std=1, FCS_loss_std=1, nanot_loss_std=1,
-                     cache=False):
+                     cache=False, seed=1):
     """Loss function combining E histogram, FCS and fluorescence decays.
     """
-    bph_sim = recolor_func(params_vary, params_const, ts, cache=cache)
+    bph_sim = recolor_func(params_vary, params_const, ts, cache=cache, seed=seed)
     loss_E = iloss_loglike_E(bph_sim, E_exp=E_exp, E_bins=E_bins)
     loss_fcs = iloss_residuals_fcs(
         bph_sim, bins=fcs_bins, CC_DA_exp=CC_DA_exp, AC_DD_exp=AC_DD_exp,
@@ -248,46 +249,46 @@ def loss_E_fcs_nanot(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
 #
 
 
-def _recolor_burstsph(ts, params, cache=False):
+def _recolor_burstsph(ts, params, cache=False, seed=1):
     if cache:
         bph = depi.recolor_burstsph_cache(ts, **params)
     else:
-        rg = RandomGenerator(Xoroshiro128(1))
+        rg = RandomGenerator(Xoroshiro128(seed))
         bph = depi.recolor_burstsph(ts, rg=rg, **params)
     return bph
 
 
-def recolor_burstsph_gauss(params, params_const, ts, cache=True):
+def recolor_burstsph_gauss(params, params_const, ts, cache=True, seed=1):
     R_mean, R_sigma, τ_relax, prob_A_dark, τ_A_dark = params
     τ_A_dark *= 1e6
     params_tot = params_const.copy()
     params_tot.update(R_mean=R_mean, R_sigma=R_sigma,
                       τ_relax=τ_relax, prob_A_dark=prob_A_dark,
                       τ_A_dark=τ_A_dark)
-    return _recolor_burstsph(ts, params_tot, cache=cache)
+    return _recolor_burstsph(ts, params_tot, cache=cache, seed=1)
 
 
-def recolor_burstsph_wlc(params, params_const, ts, cache=True):
+def recolor_burstsph_wlc(params, params_const, ts, cache=True, seed=1):
     L, lp, τ_relax, prob_A_dark, τ_A_dark = params
     τ_A_dark *= 1e6
     params_tot = params_const.copy()
     params_tot.update(L=L, lp=lp,
                       τ_relax=τ_relax, prob_A_dark=prob_A_dark,
                       τ_A_dark=τ_A_dark)
-    return _recolor_burstsph(ts, params_tot, cache=cache)
+    return _recolor_burstsph(ts, params_tot, cache=cache, seed=1)
 
 
-def recolor_burstsph_wlco(params, params_const, ts, cache=True):
+def recolor_burstsph_wlco(params, params_const, ts, cache=True, seed=1):
     L, lp, offset, τ_relax, prob_A_dark, τ_A_dark = params
     τ_A_dark *= 1e6
     params_tot = params_const.copy()
     params_tot.update(L=L, lp=lp, offset=offset,
                       τ_relax=τ_relax, prob_A_dark=prob_A_dark,
                       τ_A_dark=τ_A_dark)
-    return _recolor_burstsph(ts, params_tot, cache=cache)
+    return _recolor_burstsph(ts, params_tot, cache=cache, seed=1)
 
 
-def recolor_burstsph_gauss_nodiff(params, params_const, ts, cache=True):
+def recolor_burstsph_gauss_nodiff(params, params_const, ts, cache=True, seed=1):
 
     R_mean, R_sigma, prob_A_dark, τ_A_dark = params
     τ_A_dark *= 1e6
@@ -295,7 +296,7 @@ def recolor_burstsph_gauss_nodiff(params, params_const, ts, cache=True):
     params_tot.update(R_mean=R_mean, R_sigma=R_sigma,
                       prob_A_dark=prob_A_dark,
                       τ_A_dark=τ_A_dark)
-    return _recolor_burstsph(ts, params_tot, cache=cache)
+    return _recolor_burstsph(ts, params_tot, cache=cache, seed=1)
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
