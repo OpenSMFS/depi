@@ -5,7 +5,7 @@ from randomgen import RandomGenerator, Xoroshiro128
 import pycorrelate as pyc
 import depi
 from depi import fret
-import tcspc
+from depi import tcspc
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -18,7 +18,7 @@ def add_irf_nanot(burstsph_sim, irf, seed=1):
     nt_d = burstsph_sim.loc[burstsph_sim.stream == 'DexDem', 'nanotime']
     nt_a = burstsph_sim.loc[burstsph_sim.stream == 'DexAem', 'nanotime']
     IRF_t_sim = irf.index - irf.index[0]
-    # smooth1 is the IRF normalized so that the bins heights sum to one
+    # smooth1 is the IRF normalized so that the sum of bin counts is 1
     # With this normalization the area of the IRF is not 1.
     _DD_valid = ~irf.DD_smooth1.isnull()
     _DA_valid = ~irf.DA_smooth1.isnull()
@@ -165,9 +165,25 @@ def iloss_residuals_fcs(bph_sim, bins, CC_DA_exp, AC_DD_exp,
 #
 
 def loss_E(params_vary, params_const, ts, recolor_func, E_exp, E_bins, cache=False):
+    """Loss function for E histogram.
+    """
     bph_sim = recolor_func(params_vary, params_const, ts, cache=cache)
     loss_E = iloss_loglike_E(bph_sim, E_exp=E_exp, E_bins=E_bins)
     return loss_E
+
+
+def loss_nanot(params_vary, params_const, ts, recolor_func,
+               irf, nt_bins, tcspc_unit, nanot_hist_d_exp, nanot_hist_a_exp,
+               loglike_d_std, loglike_a_std, irf_seed=1,
+               cache=False):
+    """Loss function for fluorescence decays.
+    """
+    bph_sim = recolor_func(params_vary, params_const, ts, cache=cache)
+    loss_nanot = iloss_loglike_nanot(
+        bph_sim, irf=irf, nt_bins=nt_bins, tcspc_unit=tcspc_unit,
+        nanot_hist_d_exp=nanot_hist_d_exp, nanot_hist_a_exp=nanot_hist_a_exp,
+        loglike_d_std=loglike_d_std, loglike_a_std=loglike_a_std, irf_seed=irf_seed)
+    return loss_nanot
 
 
 def loss_E_fcs(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
@@ -184,6 +200,22 @@ def loss_E_fcs(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
         CC_DA_std_dev=CC_DA_std_dev, AC_DD_std_dev=AC_DD_std_dev,
         CC_DA_loss_std=CC_DA_loss_std, AC_DD_loss_std=AC_DD_loss_std)
     return (loss_E / E_loss_std + loss_fcs / FCS_loss_std)
+
+
+def loss_E_nanot(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
+                 irf, nt_bins, tcspc_unit, nanot_hist_d_exp, nanot_hist_a_exp,
+                 loglike_d_std, loglike_a_std, irf_seed=1,
+                 E_loss_std=1, nanot_loss_std=1,
+                 cache=False):
+    """Loss function combining E histogram and fluorescence decays.
+    """
+    bph_sim = recolor_func(params_vary, params_const, ts, cache=cache)
+    loss_E = iloss_loglike_E(bph_sim, E_exp=E_exp, E_bins=E_bins)
+    loss_nanot = iloss_loglike_nanot(
+        bph_sim, irf=irf, nt_bins=nt_bins, tcspc_unit=tcspc_unit,
+        nanot_hist_d_exp=nanot_hist_d_exp, nanot_hist_a_exp=nanot_hist_a_exp,
+        loglike_d_std=loglike_d_std, loglike_a_std=loglike_a_std, irf_seed=irf_seed)
+    return (loss_E / E_loss_std + loss_nanot / nanot_loss_std)
 
 
 def loss_E_fcs_nanot(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
