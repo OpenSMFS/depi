@@ -50,8 +50,23 @@ def nanot_hist_from_burstph(burstsph, bins, col='nanotime', offset=0):
     return nanot_hist_d, nanot_hist_a
 
 
+def _add_bg_irf(nanot_hist_a_exp, nanot_hist_a_sim, irf):
+    irf0_DA_smooth1_v = (irf.loc[~irf.DA_smooth1.isnull(), 'DA_smooth1']).values
+    irf0_DA_smooth1_v /= irf0_DA_smooth1_v.max()
+    i = 125  # empirically found for d17 sample
+    i_irf0_max = irf0_DA_smooth1_v.argmax()
+    delta_irf = nanot_hist_a_exp.max() - nanot_hist_a_sim[i_irf0_max + i]
+    nanot_hist_a_sim_pirf = nanot_hist_a_sim.copy()
+    nanot_hist_a_sim_pirf[i:i + irf0_DA_smooth1_v.shape[0]] = (
+        nanot_hist_a_sim[i:i + irf0_DA_smooth1_v.shape[0]]
+        + delta_irf * irf0_DA_smooth1_v
+    )
+    return nanot_hist_a_sim_pirf
+
+
 def calc_nanot_hist_irf_da(bph_sim, irf, nt_bins, tcspc_unit,
-                           nanot_hist_d_exp, nanot_hist_a_exp, irf_seed=1):
+                           nanot_hist_d_exp, nanot_hist_a_exp,
+                           add_bg_irf=False, irf_seed=1):
     """Compute simulated D and A fluorescnecen decays histograms with IRF.
     Results are normalized to the same area as the experimental decays passed as
     argument.
@@ -69,6 +84,8 @@ def calc_nanot_hist_irf_da(bph_sim, irf, nt_bins, tcspc_unit,
         bph_sim, bins=nt_bins, col='nanotime_conv_unit',
         offset=offset_Dex_sim / (1e9 * tcspc_unit)
     )
+    if add_bg_irf:
+        nanot_hist_a_sim = _add_bg_irf(nanot_hist_a_exp, nanot_hist_a_sim, irf)
     # Normalize to the same area as experimental decays
     nanot_hist_d_sim = nanot_hist_d_sim * nanot_hist_d_exp.sum() / nanot_hist_d_sim.sum()
     nanot_hist_a_sim = nanot_hist_a_sim * nanot_hist_a_exp.sum() / nanot_hist_a_sim.sum()
@@ -123,13 +140,13 @@ def iloss_loglike_E(bph_sim, E_exp, E_bins=np.arange(0, 1.1, 0.03)):
 
 def iloss_loglike_nanot(bph_sim, irf, nt_bins, tcspc_unit,
                         nanot_hist_d_exp, nanot_hist_a_exp,
-                        loglike_d_std, loglike_a_std,
+                        loglike_d_std, loglike_a_std, add_bg_irf=False,
                         irf_seed=1, return_da_losses=False):
     """Log-likelihood of simulated nantimes histograms vs experimental
     """
     nanot_hist_d_sim, nanot_hist_a_sim = calc_nanot_hist_irf_da(
         bph_sim, irf, nt_bins, tcspc_unit, nanot_hist_d_exp, nanot_hist_a_exp,
-        irf_seed=irf_seed)
+        add_bg_irf=add_bg_irf, irf_seed=irf_seed)
     # Compute log-likelihood metrics
     ll0_d = loglike_metric(nanot_hist_d_exp, nanot_hist_d_exp)
     ll0_a = loglike_metric(nanot_hist_a_exp, nanot_hist_a_exp)
@@ -175,7 +192,7 @@ def loss_E(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
 
 def loss_nanot(params_vary, params_const, ts, recolor_func,
                irf, nt_bins, tcspc_unit, nanot_hist_d_exp, nanot_hist_a_exp,
-               loglike_d_std, loglike_a_std, irf_seed=1,
+               loglike_d_std, loglike_a_std, add_bg_irf=False, irf_seed=1,
                cache=False, seed=1):
     """Loss function for fluorescence decays.
     """
@@ -183,7 +200,8 @@ def loss_nanot(params_vary, params_const, ts, recolor_func,
     loss_nanot = iloss_loglike_nanot(
         bph_sim, irf=irf, nt_bins=nt_bins, tcspc_unit=tcspc_unit,
         nanot_hist_d_exp=nanot_hist_d_exp, nanot_hist_a_exp=nanot_hist_a_exp,
-        loglike_d_std=loglike_d_std, loglike_a_std=loglike_a_std, irf_seed=irf_seed)
+        loglike_d_std=loglike_d_std, loglike_a_std=loglike_a_std,
+        add_bg_irf=add_bg_irf, irf_seed=irf_seed)
     return loss_nanot
 
 
@@ -205,7 +223,7 @@ def loss_E_fcs(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
 
 def loss_E_nanot(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
                  irf, nt_bins, tcspc_unit, nanot_hist_d_exp, nanot_hist_a_exp,
-                 loglike_d_std, loglike_a_std, irf_seed=1,
+                 loglike_d_std, loglike_a_std, add_bg_irf=False, irf_seed=1,
                  E_loss_std=1, nanot_loss_std=1,
                  cache=False, seed=1):
     """Loss function combining E histogram and fluorescence decays.
@@ -215,7 +233,8 @@ def loss_E_nanot(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
     loss_nanot = iloss_loglike_nanot(
         bph_sim, irf=irf, nt_bins=nt_bins, tcspc_unit=tcspc_unit,
         nanot_hist_d_exp=nanot_hist_d_exp, nanot_hist_a_exp=nanot_hist_a_exp,
-        loglike_d_std=loglike_d_std, loglike_a_std=loglike_a_std, irf_seed=irf_seed)
+        loglike_d_std=loglike_d_std, loglike_a_std=loglike_a_std,
+        add_bg_irf=add_bg_irf, irf_seed=irf_seed)
     return (loss_E / E_loss_std + loss_nanot / nanot_loss_std)
 
 
@@ -223,7 +242,7 @@ def loss_E_fcs_nanot(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
                      fcs_bins, CC_DA_exp, AC_DD_exp, CC_DA_std_dev, AC_DD_std_dev,
                      CC_DA_loss_std, AC_DD_loss_std,
                      irf, nt_bins, tcspc_unit, nanot_hist_d_exp, nanot_hist_a_exp,
-                     loglike_d_std, loglike_a_std, irf_seed=1,
+                     loglike_d_std, loglike_a_std, add_bg_irf=False, irf_seed=1,
                      E_loss_std=1, FCS_loss_std=1, nanot_loss_std=1,
                      cache=False, seed=1):
     """Loss function combining E histogram, FCS and fluorescence decays.
@@ -237,7 +256,8 @@ def loss_E_fcs_nanot(params_vary, params_const, ts, recolor_func, E_exp, E_bins,
     loss_nanot = iloss_loglike_nanot(
         bph_sim, irf=irf, nt_bins=nt_bins, tcspc_unit=tcspc_unit,
         nanot_hist_d_exp=nanot_hist_d_exp, nanot_hist_a_exp=nanot_hist_a_exp,
-        loglike_d_std=loglike_d_std, loglike_a_std=loglike_a_std, irf_seed=irf_seed)
+        loglike_d_std=loglike_d_std, loglike_a_std=loglike_a_std,
+        add_bg_irf=add_bg_irf, irf_seed=irf_seed)
     return (loss_E / E_loss_std + loss_fcs / FCS_loss_std + loss_nanot / nanot_loss_std)
 
 
