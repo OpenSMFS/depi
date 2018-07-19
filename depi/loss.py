@@ -258,6 +258,13 @@ def _recolor_burstsph(ts, params, cache=False, seed=1):
     return bph
 
 
+def recolor_burstsph_gauss_noblink(params, params_const, ts, cache=True, seed=1):
+    R_mean, R_sigma, τ_relax = params
+    params_tot = params_const.copy()
+    params_tot.update(R_mean=R_mean, R_sigma=R_sigma, τ_relax=τ_relax)
+    return _recolor_burstsph(ts, params_tot, cache=cache, seed=1)
+
+
 def recolor_burstsph_gauss(params, params_const, ts, cache=True, seed=1):
     R_mean, R_sigma, τ_relax, prob_A_dark, τ_A_dark = params
     τ_A_dark *= 1e6
