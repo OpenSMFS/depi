@@ -50,18 +50,17 @@ def nanot_hist_from_burstph(burstsph, bins, col='nanotime', offset=0):
     return nanot_hist_d, nanot_hist_a
 
 
-def _add_bg_irf(nanot_hist_a_exp, nanot_hist_a_sim, irf):
-    irf0_DA_smooth1_v = (irf.loc[~irf.DA_smooth1.isnull(), 'DA_smooth1']).values
-    irf0_DA_smooth1_v /= irf0_DA_smooth1_v.max()
-    i = 125  # empirically found for d17 sample
-    i_irf0_max = irf0_DA_smooth1_v.argmax()
-    delta_irf = nanot_hist_a_exp.max() - nanot_hist_a_sim[i_irf0_max + i]
-    nanot_hist_a_sim_pirf = nanot_hist_a_sim.copy()
-    nanot_hist_a_sim_pirf[i:i + irf0_DA_smooth1_v.shape[0]] = (
-        nanot_hist_a_sim[i:i + irf0_DA_smooth1_v.shape[0]]
-        + delta_irf * irf0_DA_smooth1_v
+def _add_bg_irf(nanot_hist_exp, nanot_hist_sim, irf, i):
+    irf_values = irf.loc[~irf.isnull()].values
+    irf_values /= irf_values.max()
+    i_irf_max = irf_values.argmax()
+    delta_irf = nanot_hist_exp.max() - nanot_hist_sim[i_irf_max + i]
+    nanot_hist_sim_pirf = nanot_hist_sim.copy()
+    nanot_hist_sim_pirf[i:i + irf_values.shape[0]] = (
+        nanot_hist_sim[i:i + irf_values.shape[0]]
+        + delta_irf * irf_values
     )
-    return nanot_hist_a_sim_pirf
+    return nanot_hist_sim_pirf
 
 
 def calc_nanot_hist_irf_da(bph_sim, irf, nt_bins, tcspc_unit,
@@ -85,7 +84,8 @@ def calc_nanot_hist_irf_da(bph_sim, irf, nt_bins, tcspc_unit,
         offset=offset_Dex_sim / (1e9 * tcspc_unit)
     )
     if add_bg_irf:
-        nanot_hist_a_sim = _add_bg_irf(nanot_hist_a_exp, nanot_hist_a_sim, irf)
+        nanot_hist_d_sim = _add_bg_irf(nanot_hist_d_exp, nanot_hist_d_sim, irf.DD_smooth1, i=129)
+        nanot_hist_a_sim = _add_bg_irf(nanot_hist_a_exp, nanot_hist_a_sim, irf.DA_smooth1, i=125)
     # Normalize to the same area as experimental decays
     nanot_hist_d_sim = nanot_hist_d_sim * nanot_hist_d_exp.sum() / nanot_hist_d_sim.sum()
     nanot_hist_a_sim = nanot_hist_a_sim * nanot_hist_a_exp.sum() / nanot_hist_a_sim.sum()
