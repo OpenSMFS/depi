@@ -67,7 +67,7 @@ def _add_bg_irf(nanot_hist_a_exp, nanot_hist_a_sim, irf):
 def calc_nanot_hist_irf_da(bph_sim, irf, nt_bins, tcspc_unit,
                            nanot_hist_d_exp, nanot_hist_a_exp,
                            add_bg_irf=False, irf_seed=1):
-    """Compute simulated D and A fluorescnecen decays histograms with IRF.
+    """Compute simulated D and A fluorescence decays histograms with IRF.
     Results are normalized to the same area as the experimental decays passed as
     argument.
     """
