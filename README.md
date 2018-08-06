@@ -1,11 +1,24 @@
-# DEPI
+# MC-DEPI
 
 Monte-Carlo Diffusion-Enhanced Photon Inference (MC-DEPI) is a method to simulate solution-based single-molecule FRET experiments 
 and to estimate physical parameters to the experimental data.
 
+The method is described in:
+
+> *Monte-Carlo Diffusion-Enhanced Photon Inference: Distance Distributions and Conformational Dynamics in single-molecule FRET*
+>
+> Antonino Ingargiola, Shimon Weiss, Eitan Lerner (2018)
+> https://doi.org/10.1101/385252
+
 The input is the burst-selected photon data from a smFRET experiment. DEPI simulates photon color and nanotimes, based on 
 donor-acceptor self-diffusion. This allows to accurately simulate smFRET experiment taking into account the FRET-enhancenment
 due to the donor-acceptor diffusion happening during the fluorescence lifetime.
+
+# Notebooks
+
+Example notebooks illustrating how to use this package are available here:
+
+- https://github.com/tritemio/mcdepi2018-paper-analysis
 
 # Installation
 
