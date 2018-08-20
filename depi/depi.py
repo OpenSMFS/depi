@@ -33,7 +33,7 @@ def save_params(fname, params, bounds=None, fit_name=None):
         params = {**params, 'bounds': bounds}
     if fit_name is not None:
         params = {**params, 'fit_name': fit_name}
-    with open(fname, 'wt') as f:
+    with open(fname, 'wt', encoding="utf-8") as f:
         json.dump(params, f, ensure_ascii=False, indent=4)
 
 
@@ -41,7 +41,7 @@ def load_params(fname):
     """Load the simulation parameters from file `fname`."""
     if not fname.lower().endswith('.json'):
         fname = fname + '.json'
-    with open(fname) as f:
+    with open(fname, encoding="utf-8") as f:
         params = json.load(f)
     bounds = params.pop('bounds', None)
     fit_name = params.pop('fit_name', None)
