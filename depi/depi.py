@@ -27,8 +27,9 @@ def save_params(fname, params, bounds=None, fit_name=None):
     if not fname.lower().endswith('.json'):
         fname = fname + '.json'
     if Path(fname).exists():
-        raise IOError(f'File {fname} aready exists. '
-                      f'Please move it before saving with the same name.')
+        raise FileExistsError(
+            f'File {fname} aready exists. '
+            f'Please use a different name or move the old file.')
     if bounds is not None:
         params = {**params, 'bounds': bounds}
     if fit_name is not None:
